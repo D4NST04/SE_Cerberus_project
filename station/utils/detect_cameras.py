@@ -59,7 +59,7 @@ def choose_cam( cameras ):
     print( 'Could not find choosen camera' )
     return None
 
-def main():
+def detect_cameras():
     cams = detect_cams()
     if not cams:
         return
@@ -68,7 +68,4 @@ def main():
     if cam:
         print( '\nYou have choosen cam: ')
         print( cam )
-
-
-if __name__ == "__main__":
-    main()
+        return cam
