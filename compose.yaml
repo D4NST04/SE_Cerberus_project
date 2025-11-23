@@ -19,18 +19,20 @@ services:
       POSTGRES_USER: root
     volumes:
       - ./backend/src:/code/src
-  #   depends_on:
-  #     - db
-  #
-  # db:
-  #   image: postgres:latest
-  #   shm_size: 128mb # still don't know what this does, but the docs say to do it
-  #   environment:
-  #     POSTGRES_PASSWORD: root # why do i have to duplicate this ¯\_(ツ)_/¯
-  #   volumes:
-  #     - db-data:/var/lib/postgresql/data
-  #     # https://hub.docker.com/_/postgres#initialization-scripts
-  #     - ./backend/init.sql:/docker-entrypoint-initdb.d/init-user-db.sh
+    depends_on:
+      - db
+
+  db:
+    image: postgres:latest
+    ports:
+      - "5432:5432"
+    shm_size: 128mb # still don't know what this does, but the docs say to do it
+    environment:
+      POSTGRES_PASSWORD: root # why do i have to duplicate this ¯\_(ツ)_/¯
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      # https://hub.docker.com/_/postgres#initialization-scripts
+      - ./backend/init.sql:/docker-entrypoint-initdb.d/init-user-db.sql
 
 volumes:
   db-data: {}
