@@ -2,32 +2,35 @@
 name: cerberus
 
 services:
-  frontend:
-    build: frontend
-    ports:
-      - 3000:80
+  # frontend:
+  #   # technically this should do the same thing as just build: frontend, but
+  #   # this is more clear to me
+  #   build:
+  #     context: ./frontend
+  #     dockerfile: Dockerfile
+  #   ports:
+  #     - 3000:80
 
-  # backend:
-  #   build: backend
-  #   environment:
-  #     POSTGRES_PASSWORD: root
-  #     POSTGRES_USER: root
-  #   volumes:
-  #     - ./backend/src:/code/src
-  #     - backend-compile:/code/target
+  backend:
+    build:
+      context: backend
+    environment:
+      POSTGRES_PASSWORD: root
+      POSTGRES_USER: root
+    volumes:
+      - ./backend/src:/code/src
   #   depends_on:
   #     - db
-
-  db:
-    image: postgres:latest
-    shm_size: 128mb # still don't know what this does, but the docs say to do it
-    environment:
-      POSTGRES_PASSWORD: root # why do i have to duplicate this ¯\_(ツ)_/¯
-    volumes:
-      - db-data:/var/lib/postgresql/data
-      # https://hub.docker.com/_/postgres#initialization-scripts
-      - ./backend/init.sql:/docker-entrypoint-initdb.d/init-user-db.sh
+  #
+  # db:
+  #   image: postgres:latest
+  #   shm_size: 128mb # still don't know what this does, but the docs say to do it
+  #   environment:
+  #     POSTGRES_PASSWORD: root # why do i have to duplicate this ¯\_(ツ)_/¯
+  #   volumes:
+  #     - db-data:/var/lib/postgresql/data
+  #     # https://hub.docker.com/_/postgres#initialization-scripts
+  #     - ./backend/init.sql:/docker-entrypoint-initdb.d/init-user-db.sh
 
 volumes:
   db-data: {}
-  backend-compile: {}
