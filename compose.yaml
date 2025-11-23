@@ -24,7 +24,9 @@ services:
     environment:
       POSTGRES_PASSWORD: root # why do i have to duplicate this ¯\_(ツ)_/¯
     volumes:
-      - db-data:/db/data
+      - db-data:/var/lib/postgresql/data
+      # https://hub.docker.com/_/postgres#initialization-scripts
+      - ./backend/init.sql:/docker-entrypoint-initdb.d/init-user-db.sh
 
 volumes:
   db-data: {}
