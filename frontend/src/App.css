@@ -1,38 +1,268 @@
 .App {
   text-align: center;
-}
-
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #282c34; /* Tło całej strony */
+  min-height: 100vh;
 }
 
 .App-header {
-  background-color: #282c34;
-  min-height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
+  font-size: 16px;
+  color: white;
+  padding-top: 20px;
+}
+
+/* --- ZAKŁADKI (TABS) --- */
+.tabs {
+  display: flex;
+  gap: 8px;
+  padding-left: 20px;
+  position: relative;
+  /* Ważne: usuwamy z-index stąd, będziemy sterować pojedynczymi tabami */
+  margin-bottom: -1px; /* Żeby aktywny tab najechał na linię kontenera */
+}
+
+.tab {
+  background-color: #2c313a;
+  color: #8b9bb4;
+  border: none;
+  padding: 12px 30px;
+  font-size: 1.0em;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 10px 10px 0 0;
+  transition: all 0.2s ease;
+
+  /* KLUCZOWE: Nieaktywne taby idą na sam spód */
+  position: relative;
+  z-index: 1;
+}
+
+.tab:hover {
+  background-color: #3a3f4b;
   color: white;
 }
 
-.App-link {
-  color: #61dafb;
+.tab.active {
+  background-color: white;
+  color: #282c34;
+  font-weight: bold;
+
+  /* KLUCZOWE: Aktywny tab musi być NAJWYŻEJ, żeby przykryć krawędź pudełka */
+  z-index: 10;
+  box-shadow: 0 -3px 10px rgba(0,0,0,0.05); /* Delikatny cień tylko u góry */
 }
 
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+/* --- MODAL (POPUP) - WERSJA PRO --- */
+.modal-overlay {
+  position: fixed; /* Zawsze na cały ekran */
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.6); /* Ciemne półprzezroczyste tło */
+  backdrop-filter: blur(5px); /* EFEKT SZKŁA: Rozmywa to co pod spodem! */
+  display: flex;
+  justify-content: center; /* Centrujemy w poziomie */
+  align-items: center; /* Centrujemy w pionie */
+  z-index: 9999; /* Zawsze na samym wierzchu */
+  animation: fadeIn 0.3s ease; /* Ładna animacja pojawiania */
+}
+
+.modal-content {
+  background-color: white;
+  padding: 30px;
+  border-radius: 15px; /* Bardziej okrągłe rogi */
+  width: 90%;
+  max-width: 450px; /* Maksymalna szerokość */
+  box-shadow: 0 10px 25px rgba(0,0,0,0.5); /* Mocny cień, efekt 3D */
+  color: #333;
+  text-align: left;
+  transform: translateY(0);
+  animation: slideUp 0.3s ease;
+}
+
+/* --- ANIMACJE --- */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+/* --- RESZTA FORMULARZA (żeby pola były ładne) --- */
+.form-group input, .form-group select {
+  width: 100%;
+  padding: 10px;
+  margin-top: 5px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 16px;
+  background-color: #fff; /* Białe tło w polach */
+  color: #333; /* Ciemny tekst */
+}
+
+.form-group input:focus, .form-group select:focus {
+  outline: none;
+  border-color: #61dafb;
+  box-shadow: 0 0 5px rgba(97, 218, 251, 0.5);
+}
+
+/* --- KONTENER TREŚCI --- */
+.table-container {
+  background-color: white;
+  color: #333;
+  padding: 20px;
+
+  /* Zaokrąglamy WSZYSTKIE rogi (usuwamy to dziwne wyzerowanie lewego rogu) */
+  border-radius: 10px;
+
+  box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+  width: 90%;
+  max-width: 1000px;
+  min-height: 400px;
+
+  /* KLUCZOWE: Pudełko jest wyżej niż nieaktywne taby, ale niżej niż aktywny */
+  position: relative;
+  z-index: 5;
+}
+
+.header-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  border-bottom: 2px solid #f4f4f4;
+  padding-bottom: 10px;
+}
+
+.header-actions h2 { margin: 0; }
+
+/* --- TABELA --- */
+.employee-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.employee-table th, .employee-table td {
+  padding: 12px;
+  border-bottom: 1px solid #ddd;
+  text-align: left;
+}
+
+.employee-table th {
+  background-color: #f8f9fa;
+  color: #555;
+  text-transform: uppercase;
+  font-size: 0.85em;
+  letter-spacing: 1px;
+}
+
+/* --- PRZYCISKI i BADGE --- */
+.avatar-placeholder {
+  width: 35px;
+  height: 35px;
+  background-color: #61dafb;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  color: #282c34;
+}
+
+.badge {
+  padding: 5px 10px;
+  border-radius: 15px;
+  font-size: 0.75em;
+  font-weight: bold;
+  color: white;
+}
+.badge-admin { background-color: #e74c3c; }
+.badge-manager { background-color: #f39c12; }
+.badge-employee { background-color: #27ae60; }
+
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+  font-size: 1.2em;
+  margin: 0 5px;
+  transition: transform 0.2s;
+}
+button:hover { transform: scale(1.2); }
+
+/* Specjalne przyciski */
+.btn-add {
+  background-color: #27ae60;
+  color: white;
+  padding: 8px 15px;
+  border-radius: 5px;
+  font-size: 14px;
+  font-weight: bold;
+}
+.btn-add:hover { background-color: #219150; transform: none; }
+
+.btn-export {
+  background-color: #3498db;
+  color: white;
+  padding: 8px 15px;
+  border-radius: 5px;
+  font-size: 14px;
+}
+.btn-export:hover { background-color: #2980b9; transform: none; }
+
+/* --- STYLOWANIE PRZYCISKÓW W MODALU --- */
+.modal-actions {
+  display: flex;
+  justify-content: flex-end; /* Przesuń przyciski do prawej */
+  gap: 15px; /* Odstęp między nimi */
+  margin-top: 25px;
+  padding-top: 20px;
+  border-top: 1px solid #eee; /* Linia oddzielająca formularz od guzików */
+}
+
+/* Wspólny styl dla obu przycisków */
+.modal-actions button {
+  padding: 10px 24px;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none; /* Resetujemy obramowanie */
+  transform: scale(1); /* Resetujemy powiększanie z ogólnego stylu */
+}
+
+/* Przycisk ANULUJ */
+.btn-cancel {
+  background-color: #f1f2f6;
+  color: #7f8fa6;
+}
+
+.btn-cancel:hover {
+  background-color: #e1e2e6;
+  color: #2f3640;
+}
+
+/* Przycisk ZAPISZ / DODAJ */
+.btn-save {
+  background-color: #27ae60;
+  color: white;
+  box-shadow: 0 4px 10px rgba(39, 174, 96, 0.3); /* Zielona poświata */
+}
+
+.btn-save:hover {
+  background-color: #219150;
+  box-shadow: 0 6px 15px rgba(39, 174, 96, 0.4);
+  transform: translateY(-2px); /* Lekkie uniesienie przycisku */
+}
+
+.btn-save:active {
+  transform: translateY(0); /* Wciśnięcie przy kliknięciu */
 }

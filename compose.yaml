@@ -2,16 +2,20 @@
 name: cerberus
 
 services:
-  # frontend:
+  frontend:
   #   # technically this should do the same thing as just build: frontend, but
   #   # this is more clear to me
-  #   build:
-  #     context: ./frontend
-  #     dockerfile: Dockerfile
-  #   ports:
-  #     - 3000:80
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+     - 3000:80
+    depends_on:
+      - db
 
   backend:
+    ports:
+      - "8080:8080" # added that to test connection with frontend
     build:
       context: backend
     environment:
@@ -23,7 +27,7 @@ services:
       - db
 
   db:
-    image: postgres:latest
+    image: postgres:15 # changed from latest to 15 because got errors from the latest version
     ports:
       - "5432:5432"
     shm_size: 128mb # still don't know what this does, but the docs say to do it
