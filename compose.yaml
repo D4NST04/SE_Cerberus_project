@@ -20,9 +20,10 @@ services:
       context: backend
     environment:
       POSTGRES_PASSWORD: root
-      POSTGRES_USER: root
+      DATABASE_URL: postgres://postgres:root@db:5432/postgres
     volumes:
       - ./backend/src:/code/src
+      - ./backend/error_logs.csv:/app/error_logs.csv
     depends_on:
       - db
 

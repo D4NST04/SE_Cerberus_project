@@ -1,0 +1,39 @@
+use chrono::{NaiveDate, NaiveDateTime};
+use serde::{Deserialize, Serialize};
+use sqlx::FromRow;
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct Employee {
+    pub id_person: i32,
+    pub first_name: String,
+    pub last_name: String,
+    pub role: String,
+    pub date_of_termination: Option<NaiveDate>,
+    pub photo_path: Option<String>,
+    pub account_number: Option<String>,
+    pub login: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct WorkHours {
+    pub id_record: i32,
+    pub id_employee: i32,
+    pub time_start: NaiveDateTime,
+    pub time_end: Option<NaiveDateTime>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ErrorLogEntry {
+    pub date: String,
+    pub time: String,
+    pub employee: String,
+    pub error_description: String,
+    pub image_path: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct CreateErrorLogRequest {
+    pub employee: String,
+    pub error_description: String,
+    pub image: Option<String>,
+}
