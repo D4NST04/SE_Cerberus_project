@@ -37,6 +37,8 @@ async fn main() -> std::io::Result<()> {
                 web::scope("/api")
                     .route("/log_error", web::post().to(routes::report_error))
                     .route("/employees", web::get().to(routes::get_employees))
+                    .route("/employees", web::post().to(routes::create_employee))
+                    .route("/employees/{id}", web::patch().to(routes::update_employee))
                     .route("/hours/start", web::post().to(routes::start_shift))
                     .route("/hours/end", web::post().to(routes::end_shift)),
             )

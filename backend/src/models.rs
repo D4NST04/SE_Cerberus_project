@@ -37,3 +37,22 @@ pub struct CreateErrorLogRequest {
     pub error_description: String,
     pub image: Option<String>,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct CreateEmployeeRequest {
+    pub first_name: String,
+    pub last_name: String,
+    pub role: String,
+    pub login: Option<String>,
+    pub date_of_termination: Option<NaiveDate>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateEmployeeRequest {
+    pub first_name: Option<String>,
+    pub last_name: Option<String>,
+    pub role: Option<String>,
+    pub login: Option<String>,
+    pub date_of_termination: Option<NaiveDate>,
+    pub password: Option<String>,
+}

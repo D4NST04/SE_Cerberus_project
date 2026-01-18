@@ -1,7 +1,9 @@
 use crate::logger;
-use crate::models::{CreateErrorLogRequest, Employee};
+use crate::models::{
+    CreateEmployeeRequest, CreateErrorLogRequest, Employee, UpdateEmployeeRequest,
+};
 use actix_web::{web, HttpResponse, Responder};
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 
 pub struct AppState {
     pub db: PgPool,
@@ -17,6 +19,93 @@ pub async fn report_error(req: web::Json<CreateErrorLogRequest>) -> impl Respond
         Err(e) => {
             eprintln!("Failed to log error: {}", e);
             HttpResponse::InternalServerError().body("Failed to log error")
+        }
+    }
+}
+
+pub async fn create_employee(
+    data: web::Data<AppState>,
+    req: web::Json<CreateEmployeeRequest>,
+) -> impl Responder {
+    let query = "INSERT INTO employees (id_person, first_name, last_name, role, login, date_of_termination) 
+                 VALUES ((SELECT COALESCE(MAX(id_person), 0) + 1 FROM employees), $1, $2, $3, $4, $5) 
+                 RETURNING id_person";
+
+    match sqlx::query(query)
+        .bind(&req.first_name)
+        .bind(&req.last_name)
+        .bind(&req.role)
+        .bind(&req.login)
+        .bind(req.date_of_termination)
+        .fetch_one(&data.db)
+        .await
+    {
+        Ok(row) => {
+            let id: i32 = row.get("id_person");
+            HttpResponse::Ok().json(serde_json::json!({"status": "success", "id_person": id}))
+        }
+        Err(e) => {
+            eprintln!("Database error: {}", e);
+            HttpResponse::InternalServerError().body("Failed to create employee")
+        }
+    }
+}
+
+pub async fn update_employee(
+    data: web::Data<AppState>,
+    path: web::Path<i32>,
+    req: web::Json<UpdateEmployeeRequest>,
+) -> impl Responder {
+    let id_person = path.into_inner();
+    let mut query_builder = sqlx::QueryBuilder::new("UPDATE employees SET ");
+    let mut separated = query_builder.separated(", ");
+    let mut has_updates = false;
+
+    if let Some(first_name) = &req.first_name {
+        separated.push("first_name = ");
+        separated.push_bind_unseparated(first_name);
+        has_updates = true;
+    }
+    if let Some(last_name) = &req.last_name {
+        separated.push("last_name = ");
+        separated.push_bind_unseparated(last_name);
+        has_updates = true;
+    }
+    if let Some(role) = &req.role {
+        separated.push("role = ");
+        separated.push_bind_unseparated(role);
+        has_updates = true;
+    }
+    if let Some(login) = &req.login {
+        separated.push("login = ");
+        separated.push_bind_unseparated(login);
+        has_updates = true;
+    }
+    if let Some(date_of_termination) = req.date_of_termination {
+        separated.push("date_of_termination = ");
+        separated.push_bind_unseparated(date_of_termination);
+        has_updates = true;
+    }
+    if let Some(password) = &req.password {
+        separated.push("password_hash = ");
+        separated.push_bind_unseparated(password);
+        has_updates = true;
+    }
+
+    if !has_updates {
+        return HttpResponse::BadRequest().body("No fields to update");
+    }
+
+    query_builder.push(" WHERE id_person = ");
+    query_builder.push_bind(id_person);
+
+    let query = query_builder.build();
+
+    match query.execute(&data.db).await {
+        Ok(_) => HttpResponse::Ok().body("Employee updated"),
+        Err(e) => {
+            eprintln!("Failed to update employee: {}", e);
+            HttpResponse::InternalServerError().body("Failed to update employee")
         }
     }
 }
