@@ -39,6 +39,8 @@ async fn main() -> std::io::Result<()> {
                     .route("/employees", web::get().to(routes::get_employees))
                     .route("/employees", web::post().to(routes::create_employee))
                     .route("/employees/{id}", web::patch().to(routes::update_employee))
+                    .route("/employees/{id}", web::delete().to(routes::delete_employee))
+                    .route("/hours", web::get().to(routes::get_work_hours))
                     .route("/hours/start", web::post().to(routes::start_shift))
                     .route("/hours/end", web::post().to(routes::end_shift)),
             )

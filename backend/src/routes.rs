@@ -1,6 +1,6 @@
 use crate::logger;
 use crate::models::{
-    CreateEmployeeRequest, CreateErrorLogRequest, Employee, UpdateEmployeeRequest,
+    CreateEmployeeRequest, CreateErrorLogRequest, Employee, UpdateEmployeeRequest, WorkHours,
 };
 use actix_web::{web, HttpResponse, Responder};
 use sqlx::{PgPool, Row};
@@ -110,6 +110,32 @@ pub async fn update_employee(
     }
 }
 
+pub async fn delete_employee(
+    data: web::Data<AppState>,
+    path: web::Path<i32>,
+) -> impl Responder {
+    let id_person = path.into_inner();
+    let query = "DELETE FROM employees WHERE id_person = $1";
+
+    match sqlx::query(query)
+        .bind(id_person)
+        .execute(&data.db)
+        .await
+    {
+        Ok(result) => {
+            if result.rows_affected() > 0 {
+                HttpResponse::Ok().body("Employee deleted")
+            } else {
+                HttpResponse::NotFound().body("Employee not found")
+            }
+        }
+        Err(e) => {
+            eprintln!("Failed to delete employee: {}", e);
+            HttpResponse::InternalServerError().body("Failed to delete employee")
+        }
+    }
+}
+
 pub async fn get_employees(data: web::Data<AppState>) -> impl Responder {
     let query = "SELECT id_person, first_name, last_name, role, date_of_termination, photo_path, account_number, login FROM employees";
 
@@ -118,6 +144,21 @@ pub async fn get_employees(data: web::Data<AppState>) -> impl Responder {
         .await
     {
         Ok(employees) => HttpResponse::Ok().json(employees),
+        Err(e) => {
+            eprintln!("Database error: {}", e);
+            HttpResponse::InternalServerError().body("Database error")
+        }
+    }
+}
+
+pub async fn get_work_hours(data: web::Data<AppState>) -> impl Responder {
+    let query = "SELECT id_record, id_employee, time_start, time_end FROM hours ORDER BY time_start DESC";
+
+    match sqlx::query_as::<_, WorkHours>(query)
+        .fetch_all(&data.db)
+        .await
+    {
+        Ok(hours) => HttpResponse::Ok().json(hours),
         Err(e) => {
             eprintln!("Database error: {}", e);
             HttpResponse::InternalServerError().body("Database error")

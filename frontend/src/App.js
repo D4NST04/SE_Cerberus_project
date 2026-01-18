@@ -55,10 +55,22 @@ function App() {
 
   // --- FUNKCJE LOGIKI (HANDLERS) ---
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (window.confirm("Czy na pewno chcesz zwolnić tego pracownika?")) {
-      // UWAGA: Tutaj w przyszłości trzeba dodać fetch('DELETE', ...) do backendu
-      setEmployees(employees.filter((emp) => emp.id_person !== id));
+      try {
+        const response = await fetch(`http://localhost:8080/api/employees/${id}`, {
+          method: 'DELETE',
+        });
+
+        if (!response.ok) {
+          throw new Error('Błąd usuwania pracownika');
+        }
+
+        setEmployees(employees.filter((emp) => emp.id_person !== id));
+      } catch (error) {
+        console.error("Nie udało się usunąć pracownika:", error);
+        alert("Nie udało się usunąć pracownika.");
+      }
     }
   };
 
