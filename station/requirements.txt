@@ -1,2 +1,4 @@
-opencv-python==4.8.1.78
-numpy==1.26.4
+requests>=2.31
+opencv-python>=4.9
+pyzbar
+Pillow

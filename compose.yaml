@@ -39,5 +39,34 @@ services:
       # https://hub.docker.com/_/postgres#initialization-scripts
       - ./backend/init.sql:/docker-entrypoint-initdb.d/init-user-db.sql
 
+  station_in:
+    build:
+      context: ./station
+      dockerfile: Dockerfile-station
+    privileged: true
+    environment:
+      - DISPLAY=${DISPLAY:-:1}
+      - STATION_DIRECTION=IN
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    devices:
+      - /dev/video0:/dev/video0
+    network_mode: host
+
+
+  station_out:
+    build:
+      context: ./station
+      dockerfile: Dockerfile-station
+    privileged: true
+    environment:
+      - DISPLAY=${DISPLAY:-:1}
+      - STATION_DIRECTION=OUT
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    devices:
+      - /dev/video0:/dev/video0
+    network_mode: host
+
 volumes:
   db-data: {}
