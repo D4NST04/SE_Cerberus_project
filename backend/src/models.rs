@@ -56,3 +56,39 @@ pub struct UpdateEmployeeRequest {
     pub date_of_termination: Option<NaiveDate>,
     pub password: Option<String>,
 }
+
+#[derive(Debug, Deserialize)]
+pub struct CheckQrRequest {
+    pub employee_id: i32,
+    pub direction: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CheckQrResponse {
+    pub exists: bool,
+    pub employee_id: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub first_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_name: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct VerifyFaceResponse {
+    pub access_granted: bool,
+    pub reason: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AccessAckRequest {
+    pub employee_id: i32,
+    pub direction: String,
+    pub timestamp: NaiveDateTime,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AccessAckResponse {
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}

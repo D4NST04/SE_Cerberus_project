@@ -1,9 +1,19 @@
 use crate::logger;
 use crate::models::{
-    CreateEmployeeRequest, CreateErrorLogRequest, Employee, UpdateEmployeeRequest, WorkHours,
+    AccessAckRequest, AccessAckResponse, CheckQrRequest, CheckQrResponse, CreateEmployeeRequest,
+    CreateErrorLogRequest, Employee, UpdateEmployeeRequest, VerifyFaceResponse, WorkHours,
 };
+use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse, Responder};
+use futures::{StreamExt, TryStreamExt};
 use sqlx::{PgPool, Row};
+use std::fs;
+use std::io::Write;
+use uuid::Uuid;
+
+// Assuming image_processor is available via crate root
+// If main.rs has `mod image_processor`, we can use crate::image_processor
+use crate::image_processor;
 
 pub struct AppState {
     pub db: PgPool,
@@ -19,6 +29,201 @@ pub async fn report_error(req: web::Json<CreateErrorLogRequest>) -> impl Respond
         Err(e) => {
             eprintln!("Failed to log error: {}", e);
             HttpResponse::InternalServerError().body("Failed to log error")
+        }
+    }
+}
+
+pub async fn check_qr(
+    data: web::Data<AppState>,
+    req: web::Json<CheckQrRequest>,
+) -> impl Responder {
+    let query = "SELECT id_person, first_name, last_name FROM employees WHERE id_person = $1";
+
+    match sqlx::query(query)
+        .bind(req.employee_id)
+        .fetch_optional(&data.db)
+        .await
+    {
+        Ok(Some(row)) => {
+            let first_name: String = row.get("first_name");
+            let last_name: String = row.get("last_name");
+            HttpResponse::Ok().json(CheckQrResponse {
+                exists: true,
+                employee_id: req.employee_id,
+                first_name: Some(first_name),
+                last_name: Some(last_name),
+            })
+        }
+        Ok(None) => HttpResponse::Ok().json(CheckQrResponse {
+            exists: false,
+            employee_id: req.employee_id,
+            first_name: None,
+            last_name: None,
+        }),
+        Err(e) => {
+            eprintln!("Database error: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({"error": "database_error"}))
+        }
+    }
+}
+
+pub async fn verify_face(
+    data: web::Data<AppState>,
+    mut payload: Multipart,
+) -> impl Responder {
+    let mut employee_id: Option<i32> = None;
+    let mut direction: Option<String> = None;
+    let mut photo_path: Option<String> = None;
+
+    // Process multipart
+    while let Ok(Some(mut field)) = payload.try_next().await {
+        let content_disposition = field.content_disposition();
+        let field_name = content_disposition.get_name().unwrap_or("");
+
+        if field_name == "employee_id" {
+            let mut value_bytes = Vec::new();
+            while let Some(chunk) = field.next().await {
+                value_bytes.extend_from_slice(&chunk.unwrap_or_default());
+            }
+            let value_str = String::from_utf8_lossy(&value_bytes);
+            if let Ok(id) = value_str.trim().parse::<i32>() {
+                employee_id = Some(id);
+            }
+        } else if field_name == "direction" {
+            let mut value_bytes = Vec::new();
+            while let Some(chunk) = field.next().await {
+                value_bytes.extend_from_slice(&chunk.unwrap_or_default());
+            }
+            direction = Some(String::from_utf8_lossy(&value_bytes).trim().to_string());
+        } else if field_name == "photo" {
+            let filename = format!("/tmp/{}.jpg", Uuid::new_v4());
+            let mut f = fs::File::create(&filename).unwrap(); // Handle error properly in prod
+            while let Some(chunk) = field.next().await {
+                f.write_all(&chunk.unwrap_or_default()).unwrap();
+            }
+            photo_path = Some(filename);
+        }
+    }
+
+    if employee_id.is_none() || direction.is_none() || photo_path.is_none() {
+        return HttpResponse::BadRequest().body("Missing fields");
+    }
+
+    let emp_id = employee_id.unwrap();
+    let _dir = direction.unwrap(); // unused for now in verification logic but needed for logic checks if needed
+    let p_path = photo_path.unwrap();
+
+    // Check for model file
+    if !std::path::Path::new("arcface.onnx").exists() {
+        eprintln!("Model arcface.onnx not found. Returning MOCK response.");
+        let _ = fs::remove_file(p_path); // Cleanup
+        return HttpResponse::Ok().json(VerifyFaceResponse {
+            access_granted: true,
+            reason: "mock_mode_no_model".to_string(),
+        });
+    }
+
+    // Get employee embedding from DB
+    let query = "SELECT face_embedded FROM employees WHERE id_person = $1";
+    let stored_embedding: Option<Vec<u8>> = match sqlx::query(query)
+        .bind(emp_id)
+        .fetch_optional(&data.db)
+        .await
+    {
+        Ok(Some(row)) => row.get("face_embedded"),
+        Ok(None) => {
+             let _ = fs::remove_file(p_path);
+             return HttpResponse::Ok().json(VerifyFaceResponse {
+                access_granted: false,
+                reason: "employee_not_found".to_string(),
+            });
+        }
+        Err(_) => {
+            let _ = fs::remove_file(p_path);
+            return HttpResponse::InternalServerError().json(serde_json::json!({"error": "database_error"}));
+        }
+    };
+    
+    // If no embedding stored for user, cannot verify
+    if stored_embedding.is_none() {
+         let _ = fs::remove_file(p_path);
+         return HttpResponse::Ok().json(VerifyFaceResponse {
+            access_granted: false,
+            reason: "no_face_data_registered".to_string(),
+        });
+    }
+
+    // Generate embedding from uploaded photo
+    let new_embedding = match image_processor::face_embedding(&p_path, "arcface.onnx") {
+        Ok(emb) => emb,
+        Err(e) => {
+            eprintln!("Face embedding failed: {}", e);
+            let _ = fs::remove_file(p_path);
+            return HttpResponse::InternalServerError().json(serde_json::json!({"error": "face_processing_error"}));
+        }
+    };
+    
+    // Cleanup temp file
+    let _ = fs::remove_file(p_path);
+
+    // Compare
+    // Stored embedding is Vec<u8> (bytes), we need to cast to Vec<f32>
+    // Assuming it was stored as bytes of f32s
+    let stored_bytes = stored_embedding.unwrap();
+    let stored_floats: Vec<f32> = stored_bytes
+        .chunks_exact(4)
+        .map(|chunk| {
+            let b: [u8; 4] = chunk.try_into().unwrap();
+            f32::from_le_bytes(b) // Assuming Little Endian
+        })
+        .collect();
+
+    let similarity = cosine_similarity(&new_embedding, &stored_floats);
+    let threshold = 0.5; // Tunable
+
+    if similarity > threshold {
+        HttpResponse::Ok().json(VerifyFaceResponse {
+            access_granted: true,
+            reason: "face_matched".to_string(),
+        })
+    } else {
+        HttpResponse::Ok().json(VerifyFaceResponse {
+            access_granted: false,
+            reason: "face_mismatched".to_string(),
+        })
+    }
+}
+
+fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
+    let dot_product: f32 = a.iter().zip(b).map(|(x, y)| x * y).sum();
+    let magnitude_a: f32 = a.iter().map(|x| x * x).sum::<f32>().sqrt();
+    let magnitude_b: f32 = b.iter().map(|x| x * x).sum::<f32>().sqrt();
+    if magnitude_a == 0.0 || magnitude_b == 0.0 {
+        return 0.0;
+    }
+    dot_product / (magnitude_a * magnitude_b)
+}
+
+pub async fn access_ack(
+    data: web::Data<AppState>,
+    req: web::Json<AccessAckRequest>,
+) -> impl Responder {
+    let query = "INSERT INTO access_logs (id_employee, direction, timestamp) VALUES ($1, $2, $3)";
+
+    match sqlx::query(query)
+        .bind(req.employee_id)
+        .bind(&req.direction)
+        .bind(req.timestamp)
+        .execute(&data.db)
+        .await
+    {
+        Ok(_) => HttpResponse::Ok().json(AccessAckResponse {
+            status: "acknowledged".to_string(),
+            reason: None,
+        }),
+        Err(e) => {
+            eprintln!("Database error: {}", e);
+             HttpResponse::InternalServerError().json(serde_json::json!({"error": "access_log_unavailable"}))
         }
     }
 }

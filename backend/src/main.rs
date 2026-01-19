@@ -1,3 +1,4 @@
+mod image_processor;
 mod logger;
 mod models;
 mod routes;
@@ -42,7 +43,10 @@ async fn main() -> std::io::Result<()> {
                     .route("/employees/{id}", web::delete().to(routes::delete_employee))
                     .route("/hours", web::get().to(routes::get_work_hours))
                     .route("/hours/start", web::post().to(routes::start_shift))
-                    .route("/hours/end", web::post().to(routes::end_shift)),
+                    .route("/hours/end", web::post().to(routes::end_shift))
+                    .route("/employee/check_qr", web::post().to(routes::check_qr))
+                    .route("/face/verify", web::post().to(routes::verify_face))
+                    .route("/access/ack", web::post().to(routes::access_ack)),
             )
     })
     .bind(("0.0.0.0", 8080))?
