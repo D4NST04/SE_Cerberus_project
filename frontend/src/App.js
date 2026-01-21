@@ -1,187 +1,194 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 
-// Importujemy nasze nowe komponenty
+// Komponenty
 import EmployeeTable from './components/EmployeeTable';
 import LogTable from './components/LogTable';
 import AddEmployeeModal from './components/AddEmployeeModal';
 
 function App() {
-  // --- STAN DANYCH ---
+  // --- KONFIGURACJA ---
+  const API_URL = 'http://localhost:8080/api';
+
+  // --- STAN APLIKACJI ---
   const [activeTab, setActiveTab] = useState('employees');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState(null); // null = tryb dodawania
 
-  // ZMIANA 1: Zaczynamy od pustej listy. Dane przyjdą z backendu.
+  // Dane
   const [employees, setEmployees] = useState([]);
-
-  // Stan ładowania i błędów (opcjonalnie, dla lepszego UX)
+  const [dbLogs, setDbLogs] = useState([]);       // Udane wejścia (Godziny pracy) - to już macie
+  const [securityLogs, setSecurityLogs] = useState([]); // Nieudane/Wszystkie próby - to DOPIERO BĘDZIE
   const [isLoading, setIsLoading] = useState(true);
 
-  // ZMIANA 2: Pobieranie danych z API przy starcie
+  // --- POBIERANIE DANYCH ---
   useEffect(() => {
     fetchEmployees();
+    fetchWorkHours();
+
+    // ODKOMENTUJ TO, jak koledzy zrobią endpoint do logów bezpieczeństwa
+    // fetchSecurityLogs();
   }, []);
 
   const fetchEmployees = async () => {
     try {
-      // Backend (Rust) wystawia endpoint pod tym adresem:
-      const response = await fetch('http://localhost:8080/api/employees');
+      const response = await fetch(`${API_URL}/employees`);
+      if (response.ok) {
+        const data = await response.json();
+        setEmployees(data);
+      }
+    } catch (error) {
+      console.error("Błąd pobierania pracowników:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
+  const fetchWorkHours = async () => {
+    try {
+      const response = await fetch(`${API_URL}/hours`); // Tabela 'hours'
+      if (response.ok) {
+        const data = await response.json();
+        setDbLogs(data);
+      }
+    } catch (error) {
+      console.error("Błąd pobierania godzin:", error);
+    }
+  };
+
+  /* // ODKOMENTUJ TO W PRZYSZŁOŚCI
+  const fetchSecurityLogs = async () => {
+      try {
+          // Endpoint, który zwróci tabelę access_logs (próby wejścia, odrzucenia)
+          const response = await fetch(`${API_URL}/access_logs`);
+          if (response.ok) {
+              const data = await response.json();
+              setSecurityLogs(data);
+          }
+      } catch (e) { console.error(e); }
+  };
+  */
+
+  // --- AKCJE UŻYTKOWNIKA ---
+
+  const handleDelete = async (id) => {
+    if (window.confirm("Czy na pewno chcesz usunąć tego pracownika?")) {
+      try {
+        // Strzał do API usuwania (jeśli koledzy już dodali DELETE)
+        await fetch(`${API_URL}/employees/${id}`, { method: 'DELETE' });
+
+        // Aktualizacja lokalna
+        setEmployees(employees.filter((emp) => emp.id_person !== id));
+      } catch (err) {
+        console.error("Błąd usuwania:", err);
+        alert("Nie udało się usunąć pracownika (czy backend obsługuje DELETE?).");
+      }
+    }
+  };
+
+  // HYBRYDOWA FUNKCJA ZAPISU (Działa z JSON i FormData)
+  const handleSaveEmployee = async (dataOrFormData) => {
+    // Sprawdzamy, czy formularz przysłał nam FormData (ze zdjęciem) czy zwykły obiekt JSON
+    const isMultipart = dataOrFormData instanceof FormData;
+
+    // Jeśli edytujemy, używamy ID. Jeśli dodajemy, endpoint główny.
+    const url = editingEmployee
+        ? `${API_URL}/employees/${editingEmployee.id_person}`
+        : `${API_URL}/employees`;
+
+    const method = editingEmployee ? 'PATCH' : 'POST';
+
+    // Konfiguracja żądania
+    const options = {
+      method: method,
+      // WAŻNE: Przy FormData przeglądarka sama ustawia Content-Type, nie dotykamy tego!
+      // Przy JSON musimy ustawić ręcznie.
+      headers: isMultipart ? {} : { 'Content-Type': 'application/json' },
+      body: isMultipart ? dataOrFormData : JSON.stringify(dataOrFormData)
+    };
+
+    try {
+      const response = await fetch(url, options);
       if (!response.ok) {
-        throw new Error('Błąd pobierania danych z serwera');
+        const errText = await response.text();
+        throw new Error(errText || "Błąd serwera");
       }
 
-      const data = await response.json();
-      console.log("Pobrano pracowników:", data);
-      setEmployees(data);
-      setIsLoading(false);
+      // Odświeżamy listę po sukcesie
+      await fetchEmployees();
+
+      // Zamykamy okno
+      setIsModalOpen(false);
+      setEditingEmployee(null);
+
     } catch (error) {
-      console.error("Nie udało się połączyć z backendem:", error);
-      // Fallback: Jeśli backend leży, pokaż stare dane testowe, żebyś widział interfejs
-      setEmployees([
-        { id_person: 1, first_name: "Janusz", last_name: "Szefowski (OFFLINE)", role: "admin", login: "boss" },
-        { id_person: 2, first_name: "Błąd", last_name: "Połączenia", role: "error", login: "err" },
-      ]);
-      setIsLoading(false);
+      console.error(error);
+      alert("Błąd zapisu: " + error.message);
     }
   };
 
-  const [logs] = useState([
-    { id: 1, time: "2025-11-07 07:55", employee: "Marek Operator", status: "success", info: "Wejście poprawne" },
-    { id: 2, time: "2025-11-07 08:01", employee: "Janusz Szefowski", status: "success", info: "Wejście poprawne" },
-    { id: 3, time: "2025-11-07 08:15", employee: "Nieznany", status: "error", info: "Błąd rozpoznawania twarzy" },
-  ]);
-
-  // --- FUNKCJE LOGIKI (HANDLERS) ---
-
-  const handleDelete = (id) => {
-    if (window.confirm("Czy na pewno chcesz zwolnić tego pracownika?")) {
-      // UWAGA: Tutaj w przyszłości trzeba dodać fetch('DELETE', ...) do backendu
-      setEmployees(employees.filter((emp) => emp.id_person !== id));
-    }
-  };
-
-  // Ta funkcja obsługuje TERAZ zarówno dodawanie jak i edycję
-  const handleSaveEmployee = (formData) => {
-    // 1. Generujemy bezpieczny, losowy token (np. "36b8f84d-df4e...")
-    const qrToken = crypto.randomUUID();
-
-    if (editingEmployee) {
-      // --- EDYCJA ---
-      const updatedList = employees.map((emp) => {
-        if (emp.id_person === editingEmployee.id_person) {
-          // Przy edycji zazwyczaj NIE zmieniamy tokena QR, żeby nie drukować karty na nowo.
-          // Ale jeśli pole było puste (stary pracownik), to możemy mu je dodać teraz:
-          return {
-            ...emp,
-            ...formData,
-            account_number: emp.account_number || qrToken
-          };
-        }
-        return emp;
-      });
-      setEmployees(updatedList);
-    } else {
-      // --- DODAWANIE ---
-      const newPerson = {
-        // Tymczasowe ID dla Reacta (zostanie nadpisane przez SERIAL w bazie)
-        id_person: Date.now(),
-
-        ...formData,
-
-        // --- TUTAJ DZIEJE SIĘ MAGIA ---
-        account_number: qrToken,  // Zapisujemy UUID w polu konta
-
-        // Reszta pól na null (uzupełni backend/baza)
-        face_embedded: null,
-        photo_path: null,
-        date_of_termination: null
-      };
-
-      console.log("Nowy pracownik z tokenem QR:", newPerson);
-      setEmployees([...employees, newPerson]);
-    }
-
-    setIsModalOpen(false);
-    setEditingEmployee(null);
-  };
-
-  const handleAddClick = () => {
-    setEditingEmployee(null);
-    setIsModalOpen(true);
-  };
-
-  const handleEditClick = (employee) => {
-    setEditingEmployee(employee);
-    setIsModalOpen(true);
-  };
-
+  // --- OBSŁUGA QR ---
   const handleGenerateQR = (employee) => {
-    // Pobieramy token z pola account_number.
-    // Fallback: Jeśli pracownik jest stary i nie ma tokena, użyj id_person, żeby cokolwiek zadziałało.
-    const qrContent = employee.account_number || employee.id_person;
-
-    // Generujemy link do obrazka
+    // Jeśli nie ma account_number, używamy id_person jako fallback
+    const qrContent = employee.account_number || employee.id_person.toString();
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${qrContent}`;
-
-    // Otwieramy w nowym oknie
     window.open(qrUrl, "_blank", "width=300,height=300");
   };
 
   const handleDownloadQR = async (employee) => {
-    // 1. Ustalamy treść kodu (UUID lub ID)
-    const qrContent = employee.account_number || employee.id_person;
-
-    // 2. Adres API
+    const qrContent = employee.account_number || employee.id_person.toString();
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${qrContent}`;
-
     try {
-      // 3. Pobieramy obrazek jako "Blob" (plik binarny)
       const response = await fetch(qrUrl);
       const blob = await response.blob();
-
-      // 4. Tworzymy wirtualny link do pobrania
-      const downloadLink = document.createElement("a");
-      downloadLink.href = URL.createObjectURL(blob);
-
-      // 5. Nadajemy ładną nazwę pliku: QR_Nazwisko_Imie.png
-      downloadLink.download = `QR_${employee.last_name}_${employee.first_name}.png`;
-
-      // 6. Klikamy w link programowo i sprzątamy
-      document.body.appendChild(downloadLink);
-      downloadLink.click();
-      document.body.removeChild(downloadLink);
-
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `QR_${employee.last_name}_${employee.first_name}.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     } catch (error) {
-      console.error("Błąd pobierania QR:", error);
-      alert("Coś poszło nie tak przy pobieraniu. Otwieram w nowym oknie.");
-      // Fallback: jak pobieranie nie zadziała, otwórz po staremu
       window.open(qrUrl, "_blank");
     }
   };
 
   const handleExportCSV = () => {
-    const headers = ["ID,Data,Pracownik,Status,Opis"];
-    const csvRows = logs.map(log => `${log.id},${log.time},${log.employee},${log.status},${log.info}`);
-    const csvContent = [headers, ...csvRows].join("\n");
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", "raport_cerberus.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    alert("Eksport do CSV zrobisz, jak będziesz miał pełne logi!");
   };
 
-  // --- WIDOK ---
+  // --- PRZYGOTOWANIE DANYCH DO TABELI ---
+
+  const getEmployeeName = (id) => {
+    const emp = employees.find(e => e.id_person === id);
+    return emp ? `${emp.first_name} ${emp.last_name}` : `ID: ${id}`;
+  };
+
+  // Łączymy godziny pracy (dbLogs) z przyszłymi logami bezpieczeństwa (securityLogs)
+  // Na razie securityLogs jest puste, więc wyświetli tylko godziny.
+  const allLogs = [
+    ...dbLogs.map(log => ({
+      id: `work-${log.id_record}`,
+      time: log.time_start,
+      employee: getEmployeeName(log.id_employee),
+      status: log.time_end ? "✅ Zakończono" : "⏳ W pracy",
+      info: log.time_end ? `Wyjście: ${log.time_end}` : "Pracownik na zmianie"
+    })),
+    ...securityLogs.map(log => ({
+      id: `sec-${log.id}`,
+      time: log.timestamp, // Zakładam nazwę pola z przyszłego API
+      employee: getEmployeeName(log.employee_id), // Zakładam nazwę pola
+      status: log.granted ? "🟢 WEJŚCIE" : "🔴 ODMOWA",
+      info: log.granted ? "Weryfikacja OK" : `Powód: ${log.reason || 'Brak uprawnień'}`
+    }))
+  ].sort((a,b) => new Date(b.time) - new Date(a.time));
+
+
+  // --- WIDOK (JSX) ---
   return (
       <div className="App">
         <header className="App-header">
           <h1>🐶 Cerberus - Panel Administratora</h1>
 
-          {/* Nawigacja */}
           <div className="tabs">
             <button
                 className={activeTab === 'employees' ? 'tab active' : 'tab'}
@@ -197,11 +204,12 @@ function App() {
             </button>
           </div>
 
-          {/* Zawartość zależna od zakładki */}
           {activeTab === 'employees' ? (
               <>
                 <div style={{width: '90%', maxWidth: '1000px', display: 'flex', justifyContent: 'flex-end', marginBottom: '-40px', zIndex: 10, position: 'relative'}}>
-                  <button className="btn-add" onClick={handleAddClick}>+ Dodaj Pracownika</button>
+                  <button className="btn-add" onClick={() => { setEditingEmployee(null); setIsModalOpen(true); }}>
+                    + Dodaj Pracownika
+                  </button>
                 </div>
 
                 {isLoading ? (
@@ -212,13 +220,13 @@ function App() {
                         onDelete={handleDelete}
                         onGenerateQR={handleGenerateQR}
                         onDownloadQR={handleDownloadQR}
-                        onEdit={handleEditClick}
+                        onEdit={(emp) => { setEditingEmployee(emp); setIsModalOpen(true); }}
                     />
                 )}
               </>
           ) : (
               <LogTable
-                  logs={logs}
+                  logs={allLogs}
                   onExport={handleExportCSV}
               />
           )}
