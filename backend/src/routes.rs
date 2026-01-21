@@ -1,7 +1,8 @@
 use crate::logger;
 use crate::models::{
-    AccessAckRequest, AccessAckResponse, CheckQrRequest, CheckQrResponse, CreateEmployeeRequest,
-    CreateErrorLogRequest, Employee, UpdateEmployeeRequest, VerifyFaceResponse, WorkHours,
+    AccessAckRequest, AccessAckResponse, AccessLog, CheckQrRequest, CheckQrResponse,
+    CreateEmployeeRequest, CreateErrorLogRequest, Employee, UpdateEmployeeRequest,
+    VerifyFaceResponse, WorkHours,
 };
 use actix_multipart::Multipart;
 use actix_web::{web, HttpResponse, Responder};
@@ -11,8 +12,6 @@ use std::fs;
 use std::io::Write;
 use uuid::Uuid;
 
-// Assuming image_processor is available via crate root
-// If main.rs has `mod image_processor`, we can use crate::image_processor
 use crate::image_processor;
 
 pub struct AppState {
@@ -21,6 +20,99 @@ pub struct AppState {
 
 pub async fn health_check() -> impl Responder {
     HttpResponse::Ok().body("Server is running")
+}
+
+pub async fn get_access_logs(data: web::Data<AppState>) -> impl Responder {
+    let query =
+        "SELECT id_log, id_employee, direction, timestamp FROM access_logs ORDER BY timestamp DESC";
+
+    match sqlx::query_as::<_, AccessLog>(query)
+        .fetch_all(&data.db)
+        .await
+    {
+        Ok(logs) => HttpResponse::Ok().json(logs),
+        Err(e) => {
+            eprintln!("Database error: {}", e);
+            HttpResponse::InternalServerError().body("Database error")
+        }
+    }
+}
+
+pub async fn upload_employee_photo(
+    data: web::Data<AppState>,
+    path: web::Path<i32>,
+    mut payload: Multipart,
+) -> impl Responder {
+    let id_person = path.into_inner();
+    let mut photo_path: Option<String> = None;
+
+    while let Ok(Some(mut field)) = payload.try_next().await {
+        let content_disposition = field.content_disposition();
+        let field_name = content_disposition.get_name().unwrap_or("");
+
+        if field_name == "photo" {
+            let filename = format!("uploads/employees/{}.jpg", id_person);
+            // Ensure directory exists
+            if let Err(e) = fs::create_dir_all("uploads/employees") {
+                eprintln!("Failed to create directory: {}", e);
+                return HttpResponse::InternalServerError().body("Server error");
+            }
+
+            let mut f = match fs::File::create(&filename) {
+                Ok(file) => file,
+                Err(e) => {
+                    eprintln!("Failed to create file: {}", e);
+                    return HttpResponse::InternalServerError().body("Server error");
+                }
+            };
+
+            while let Some(chunk) = field.next().await {
+                if let Err(e) = f.write_all(&chunk.unwrap_or_default()) {
+                    eprintln!("Failed to write file: {}", e);
+                    return HttpResponse::InternalServerError().body("Server error");
+                }
+            }
+            photo_path = Some(filename);
+        }
+    }
+
+    if let Some(p_path) = photo_path {
+        if !std::path::Path::new("arcface.onnx").exists() {
+            eprintln!("Model arcface.onnx not found.");
+            return HttpResponse::InternalServerError().body("Model not found");
+        }
+
+        match image_processor::face_embedding(&p_path, "arcface.onnx") {
+            Ok(embedding) => {
+                let mut bytes: Vec<u8> = Vec::with_capacity(embedding.len() * 4);
+                for float in embedding {
+                    bytes.extend_from_slice(&float.to_le_bytes());
+                }
+
+                let query =
+                    "UPDATE employees SET face_embedded = $1, photo_path = $2 WHERE id_person = $3";
+                match sqlx::query(query)
+                    .bind(bytes)
+                    .bind(&p_path)
+                    .bind(id_person)
+                    .execute(&data.db)
+                    .await
+                {
+                    Ok(_) => HttpResponse::Ok().body("Photo uploaded and processed"),
+                    Err(e) => {
+                        eprintln!("Database error: {}", e);
+                        HttpResponse::InternalServerError().body("Database error")
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("Face embedding failed: {}", e);
+                HttpResponse::InternalServerError().body("Face processing error")
+            }
+        }
+    } else {
+        HttpResponse::BadRequest().body("Missing photo field")
+    }
 }
 
 pub async fn report_error(req: web::Json<CreateErrorLogRequest>) -> impl Responder {
@@ -33,10 +125,7 @@ pub async fn report_error(req: web::Json<CreateErrorLogRequest>) -> impl Respond
     }
 }
 
-pub async fn check_qr(
-    data: web::Data<AppState>,
-    req: web::Json<CheckQrRequest>,
-) -> impl Responder {
+pub async fn check_qr(data: web::Data<AppState>, req: web::Json<CheckQrRequest>) -> impl Responder {
     let query = "SELECT id_person, first_name, last_name FROM employees WHERE id_person = $1";
 
     match sqlx::query(query)
@@ -67,15 +156,11 @@ pub async fn check_qr(
     }
 }
 
-pub async fn verify_face(
-    data: web::Data<AppState>,
-    mut payload: Multipart,
-) -> impl Responder {
+pub async fn verify_face(data: web::Data<AppState>, mut payload: Multipart) -> impl Responder {
     let mut employee_id: Option<i32> = None;
     let mut direction: Option<String> = None;
     let mut photo_path: Option<String> = None;
 
-    // Process multipart
     while let Ok(Some(mut field)) = payload.try_next().await {
         let content_disposition = field.content_disposition();
         let field_name = content_disposition.get_name().unwrap_or("");
@@ -113,7 +198,6 @@ pub async fn verify_face(
     let _dir = direction.unwrap(); // unused for now in verification logic but needed for logic checks if needed
     let p_path = photo_path.unwrap();
 
-    // Check for model file
     if !std::path::Path::new("arcface.onnx").exists() {
         eprintln!("Model arcface.onnx not found. Returning MOCK response.");
         let _ = fs::remove_file(p_path); // Cleanup
@@ -123,7 +207,6 @@ pub async fn verify_face(
         });
     }
 
-    // Get employee embedding from DB
     let query = "SELECT face_embedded FROM employees WHERE id_person = $1";
     let stored_embedding: Option<Vec<u8>> = match sqlx::query(query)
         .bind(emp_id)
@@ -132,43 +215,39 @@ pub async fn verify_face(
     {
         Ok(Some(row)) => row.get("face_embedded"),
         Ok(None) => {
-             let _ = fs::remove_file(p_path);
-             return HttpResponse::Ok().json(VerifyFaceResponse {
+            let _ = fs::remove_file(p_path);
+            return HttpResponse::Ok().json(VerifyFaceResponse {
                 access_granted: false,
                 reason: "employee_not_found".to_string(),
             });
         }
         Err(_) => {
             let _ = fs::remove_file(p_path);
-            return HttpResponse::InternalServerError().json(serde_json::json!({"error": "database_error"}));
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "database_error"}));
         }
     };
-    
-    // If no embedding stored for user, cannot verify
+
     if stored_embedding.is_none() {
-         let _ = fs::remove_file(p_path);
-         return HttpResponse::Ok().json(VerifyFaceResponse {
+        let _ = fs::remove_file(p_path);
+        return HttpResponse::Ok().json(VerifyFaceResponse {
             access_granted: false,
             reason: "no_face_data_registered".to_string(),
         });
     }
 
-    // Generate embedding from uploaded photo
     let new_embedding = match image_processor::face_embedding(&p_path, "arcface.onnx") {
         Ok(emb) => emb,
         Err(e) => {
             eprintln!("Face embedding failed: {}", e);
             let _ = fs::remove_file(p_path);
-            return HttpResponse::InternalServerError().json(serde_json::json!({"error": "face_processing_error"}));
+            return HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "face_processing_error"}));
         }
     };
-    
-    // Cleanup temp file
+
     let _ = fs::remove_file(p_path);
 
-    // Compare
-    // Stored embedding is Vec<u8> (bytes), we need to cast to Vec<f32>
-    // Assuming it was stored as bytes of f32s
     let stored_bytes = stored_embedding.unwrap();
     let stored_floats: Vec<f32> = stored_bytes
         .chunks_exact(4)
@@ -223,7 +302,8 @@ pub async fn access_ack(
         }),
         Err(e) => {
             eprintln!("Database error: {}", e);
-             HttpResponse::InternalServerError().json(serde_json::json!({"error": "access_log_unavailable"}))
+            HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "access_log_unavailable"}))
         }
     }
 }
@@ -315,18 +395,11 @@ pub async fn update_employee(
     }
 }
 
-pub async fn delete_employee(
-    data: web::Data<AppState>,
-    path: web::Path<i32>,
-) -> impl Responder {
+pub async fn delete_employee(data: web::Data<AppState>, path: web::Path<i32>) -> impl Responder {
     let id_person = path.into_inner();
     let query = "DELETE FROM employees WHERE id_person = $1";
 
-    match sqlx::query(query)
-        .bind(id_person)
-        .execute(&data.db)
-        .await
-    {
+    match sqlx::query(query).bind(id_person).execute(&data.db).await {
         Ok(result) => {
             if result.rows_affected() > 0 {
                 HttpResponse::Ok().body("Employee deleted")
@@ -357,7 +430,8 @@ pub async fn get_employees(data: web::Data<AppState>) -> impl Responder {
 }
 
 pub async fn get_work_hours(data: web::Data<AppState>) -> impl Responder {
-    let query = "SELECT id_record, id_employee, time_start, time_end FROM hours ORDER BY time_start DESC";
+    let query =
+        "SELECT id_record, id_employee, time_start, time_end FROM hours ORDER BY time_start DESC";
 
     match sqlx::query_as::<_, WorkHours>(query)
         .fetch_all(&data.db)
@@ -421,3 +495,4 @@ pub async fn end_shift(
         }
     }
 }
+

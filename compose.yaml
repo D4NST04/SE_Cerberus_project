@@ -24,6 +24,7 @@ services:
     volumes:
       - ./backend/src:/code/src
       - ./backend/error_logs.csv:/app/error_logs.csv
+      - ./backend/uploads:/app/uploads
     depends_on:
       - db
 

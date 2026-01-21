@@ -41,12 +41,14 @@ async fn main() -> std::io::Result<()> {
                     .route("/employees", web::post().to(routes::create_employee))
                     .route("/employees/{id}", web::patch().to(routes::update_employee))
                     .route("/employees/{id}", web::delete().to(routes::delete_employee))
+                    .route("/employees/{id}/photo", web::post().to(routes::upload_employee_photo))
                     .route("/hours", web::get().to(routes::get_work_hours))
                     .route("/hours/start", web::post().to(routes::start_shift))
                     .route("/hours/end", web::post().to(routes::end_shift))
                     .route("/employee/check_qr", web::post().to(routes::check_qr))
                     .route("/face/verify", web::post().to(routes::verify_face))
-                    .route("/access/ack", web::post().to(routes::access_ack)),
+                    .route("/access/ack", web::post().to(routes::access_ack))
+                    .route("/access_logs", web::get().to(routes::get_access_logs)),
             )
     })
     .bind(("0.0.0.0", 8080))?

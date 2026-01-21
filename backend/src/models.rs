@@ -86,9 +86,17 @@ pub struct AccessAckRequest {
     pub timestamp: NaiveDateTime,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AccessAckResponse {
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, FromRow)]
+pub struct AccessLog {
+    pub id_log: i32,
+    pub id_employee: i32,
+    pub direction: String,
+    pub timestamp: NaiveDateTime,
 }
