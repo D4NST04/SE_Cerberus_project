@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
 
-// Komponenty
+// Komponenty (upewnij się, że pliki istnieją w folderze components/)
 import EmployeeTable from './components/EmployeeTable';
 import LogTable from './components/LogTable';
 import AddEmployeeModal from './components/AddEmployeeModal';
@@ -9,15 +9,17 @@ import AddEmployeeModal from './components/AddEmployeeModal';
 function App() {
   const API_URL = 'http://localhost:8080/api';
 
+  // --- STANY APLIKACJI ---
   const [activeTab, setActiveTab] = useState('employees');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState(null);
 
   const [employees, setEmployees] = useState([]);
-  const [dbLogs, setDbLogs] = useState([]);       // Godziny pracy
-  const [securityLogs, setSecurityLogs] = useState([]); // Logi wejść
+  const [dbLogs, setDbLogs] = useState([]);       // Godziny pracy (WorkHours)
+  const [securityLogs, setSecurityLogs] = useState([]); // Logi z bramek (AccessLogs)
   const [isLoading, setIsLoading] = useState(true);
 
+  // --- START APLIKACJI ---
   useEffect(() => {
     fetchEmployees();
     fetchWorkHours();
@@ -29,7 +31,9 @@ function App() {
   const fetchEmployees = async () => {
     try {
       const response = await fetch(`${API_URL}/employees`);
-      if (response.ok) setEmployees(await response.json());
+      if (response.ok) {
+        setEmployees(await response.json());
+      }
     } catch (e) { console.error("Błąd employees:", e); }
     setIsLoading(false);
   };
@@ -37,7 +41,9 @@ function App() {
   const fetchWorkHours = async () => {
     try {
       const response = await fetch(`${API_URL}/hours`);
-      if (response.ok) setDbLogs(await response.json());
+      if (response.ok) {
+        setDbLogs(await response.json());
+      }
     } catch (e) { console.error("Błąd hours:", e); }
   };
 
@@ -53,12 +59,83 @@ function App() {
     }
   };
 
-  // --- ZAPISYWANIE (Dwuetapowe: Dane -> ID -> Zdjęcie) ---
+  // --- LOGIKA DO TABELI LOGÓW (Obliczenia i Formatowanie) ---
 
-  // --- ZAPISYWANIE (Edycja po ID lub Dodawanie nowego) ---
+  const calculateDuration = (start, end) => {
+    if (!end) return "W trakcie...";
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    const diffMs = endDate - startDate; // Różnica w ms
+
+    const diffHrs = Math.floor(diffMs / 3600000);
+    const diffMins = Math.floor((diffMs % 3600000) / 60000);
+
+    return `${diffHrs}h ${diffMins}m`;
+  };
+
+  const getEmployeeName = (id) => {
+    const emp = employees.find(e => e.id_person === id);
+    return emp ? `${emp.first_name} ${emp.last_name}` : `ID: ${id}`;
+  };
+
+  // Łączymy logi pracy i logi bezpieczeństwa w jedną listę
+  const allLogs = [
+    ...dbLogs.map(log => ({
+      id: `work-${log.id_record}`,
+      time: log.time_start,
+      employee: getEmployeeName(log.id_employee),
+      status: log.time_end ? "✅ Koniec zmiany" : "⏳ W pracy",
+      info: log.time_end
+          ? `Czas pracy: ${calculateDuration(log.time_start, log.time_end)}`
+          : "Zmiana trwa"
+    })),
+    ...securityLogs.map(log => ({
+      id: `sec-${log.id_log}`,
+      time: log.timestamp,
+      employee: getEmployeeName(log.id_employee),
+      status: log.direction === "IN" ? "➡️ WEJŚCIE" : "⬅️ WYJŚCIE",
+      info: "Log z bramki (Station)"
+    }))
+  ].sort((a,b) => new Date(b.time) - new Date(a.time));
+
+  // --- OBSŁUGA EKSPORTU CSV ---
+
+  const handleExportCSV = () => {
+    if (allLogs.length === 0) {
+      alert("Brak danych do wyeksportowania!");
+      return;
+    }
+
+    const headers = ["ID Logu", "Data i Czas", "Pracownik", "Status", "Informacje"];
+
+    const csvContent = [
+      headers.join(","),
+      ...allLogs.map(log => {
+        return [
+          log.id,
+          new Date(log.time).toLocaleString(),
+          `"${log.employee}"`,
+          `"${log.status}"`,
+          `"${log.info}"`
+        ].join(",");
+      })
+    ].join("\n");
+
+    // Dodajemy BOM (\uFEFF) dla obsługi polskich znaków w Excelu
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `raport_cerberus_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  // --- ZAPISYWANIE (Edycja / Dodawanie) ---
 
   const handleSaveEmployee = async (fullData) => {
-    // 1. Rozdzielamy zdjęcie od reszty danych (bo zdjęcie idzie osobnym strzałem)
     const { photo, ...jsonData } = fullData;
 
     try {
@@ -67,22 +144,17 @@ function App() {
       let employeeId;
 
       if (editingEmployee) {
-        // === EDYCJA PRACOWNIKA ===
-        // Wykorzystujemy ID, o którym mówił kolega!
+        // === EDYCJA (PATCH) ===
         employeeId = editingEmployee.id_person;
-
-        // Adres wskazuje na konkretnego pracownika (np. .../employees/5)
         url = `${API_URL}/employees/${employeeId}`;
-        method = 'PATCH'; // Metoda do aktualizacji częściowej
-
-        console.log(`Edytuję pracownika o ID: ${employeeId}`);
+        method = 'PATCH';
       } else {
-        // === TWORZENIE NOWEGO ===
+        // === TWORZENIE (POST) ===
         url = `${API_URL}/employees`;
         method = 'POST';
       }
 
-      // KROK 1: Wysyłamy dane tekstowe (Imię, Nazwisko, Rola...)
+      // KROK 1: Wysyłamy dane tekstowe
       const response = await fetch(url, {
         method: method,
         headers: { 'Content-Type': 'application/json' },
@@ -94,8 +166,7 @@ function App() {
         throw new Error(`Błąd zapisu danych: ${err}`);
       }
 
-      // Jeśli tworzyliśmy nowego, musimy wyciągnąć jego nowe ID z odpowiedzi,
-      // żeby wiedzieć, gdzie wysłać zdjęcie.
+      // Jeśli tworzyliśmy nowego, pobieramy jego ID z odpowiedzi
       if (!editingEmployee) {
         const resData = await response.json();
         if (resData.id_person) {
@@ -103,25 +174,23 @@ function App() {
         }
       }
 
-      // KROK 2: Jeśli wybrano zdjęcie (i mamy ID pracownika), wysyłamy je teraz
-      // To działa zarówno przy dodawaniu, jak i przy edycji (jeśli ktoś zmienił zdjęcie)
+      // KROK 2: Jeśli wybrano zdjęcie (i mamy ID), wysyłamy je
       if (photo && employeeId) {
         console.log(`Wysyłam zdjęcie dla ID: ${employeeId}...`);
         const formData = new FormData();
         formData.append("photo", photo);
 
-        // Backend kolegów ma osobny endpoint na zdjęcie: /employees/{id}/photo
         const photoResponse = await fetch(`${API_URL}/employees/${employeeId}/photo`, {
           method: 'POST',
           body: formData
         });
 
         if (!photoResponse.ok) {
-          console.warn("Udało się zapisać dane, ale wystąpił błąd przy zdjęciu.");
+          console.warn("Dane zapisano, ale wystąpił błąd przy wysyłaniu zdjęcia.");
         }
       }
 
-      // Sukces - odświeżamy tabelę i zamykamy okno
+      // Sukces
       await fetchEmployees();
       setIsModalOpen(false);
       setEditingEmployee(null);
@@ -136,16 +205,14 @@ function App() {
     if (window.confirm("Czy na pewno chcesz usunąć pracownika?")) {
       try {
         await fetch(`${API_URL}/employees/${id}`, { method: 'DELETE' });
-        // Aktualizujemy lokalnie, żeby nie strzelać do API niepotrzebnie
         setEmployees(employees.filter(e => e.id_person !== id));
       } catch (e) { alert("Błąd usuwania"); }
     }
   };
 
-  // --- QR CODES (TERAZ TYLKO PO ID!) ---
+  // --- QR CODES (Generowane z ID) ---
 
   const handleGenerateQR = (employee) => {
-    // Prosta logika: QR to po prostu ID pracownika (np. "5")
     const qrContent = employee.id_person.toString();
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${qrContent}`;
     window.open(qrUrl, "_blank", "width=300,height=300");
@@ -163,33 +230,7 @@ function App() {
     } catch(e) { window.open(qrUrl); }
   };
 
-  // --- TABELE I WYŚWIETLANIE ---
-
-  const handleExportCSV = () => {
-    alert("Funkcja eksportu dostępna wkrótce!");
-  };
-
-  const getEmployeeName = (id) => {
-    const emp = employees.find(e => e.id_person === id);
-    return emp ? `${emp.first_name} ${emp.last_name}` : `ID: ${id}`;
-  };
-
-  const allLogs = [
-    ...dbLogs.map(log => ({
-      id: `work-${log.id_record}`,
-      time: log.time_start,
-      employee: getEmployeeName(log.id_employee),
-      status: log.time_end ? "✅ Koniec" : "⏳ Praca",
-      info: log.time_end ? `Wyjście: ${log.time_end.split('T')[1].substring(0,5)}` : "W trakcie"
-    })),
-    ...securityLogs.map(log => ({
-      id: `sec-${log.id_log}`,
-      time: log.timestamp,
-      employee: getEmployeeName(log.id_employee),
-      status: log.direction === "IN" ? "➡️ WEJŚCIE" : "⬅️ WYJŚCIE",
-      info: "Bramka"
-    }))
-  ].sort((a,b) => new Date(b.time) - new Date(a.time));
+  // --- INTERFEJS (JSX) ---
 
   return (
       <div className="App">
@@ -223,6 +264,7 @@ function App() {
                 )}
               </>
           ) : (
+              // Przekazujemy funkcję eksportu do tabeli logów
               <LogTable logs={allLogs} onExport={handleExportCSV} />
           )}
 
