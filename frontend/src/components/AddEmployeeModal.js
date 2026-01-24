@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 
-// Dodajemy prop 'employeeToEdit' - jeśli istnieje, to znaczy że edytujemy
 function AddEmployeeModal({ isOpen, onClose, onSave, employeeToEdit }) {
 
     const [formData, setFormData] = useState({
@@ -8,30 +7,29 @@ function AddEmployeeModal({ isOpen, onClose, onSave, employeeToEdit }) {
         last_name: "",
         role: "employee",
         login: "",
-        termination_date: "" // NOWE POLE
+        date_of_termination: ""
     });
 
-    // MAGIA: Ten kawałek kodu wykona się ZAWSZE, gdy otworzysz okno (zmieni się isOpen)
-    // albo gdy zmienisz pracownika do edycji.
+    const [photoFile, setPhotoFile] = useState(null);
+
     useEffect(() => {
         if (isOpen) {
+            setPhotoFile(null); // Reset zdjęcia przy otwarciu
             if (employeeToEdit) {
-                // TRYB EDYCJI: Wpisujemy dane istniejącego pracownika w pola
                 setFormData({
                     first_name: employeeToEdit.first_name,
                     last_name: employeeToEdit.last_name,
                     role: employeeToEdit.role,
-                    login: employeeToEdit.login,
-                    termination_date: employeeToEdit.termination_date || "" // NOWE
+                    login: employeeToEdit.login || "",
+                    date_of_termination: employeeToEdit.date_of_termination || ""
                 });
             } else {
-                // TRYB DODAWANIA: Czyścimy pola
                 setFormData({
                     first_name: "",
                     last_name: "",
                     role: "employee",
                     login: "",
-                    termination_date: "" // NOWE
+                    date_of_termination: ""
                 });
             }
         }
@@ -41,14 +39,21 @@ function AddEmployeeModal({ isOpen, onClose, onSave, employeeToEdit }) {
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        onSave(formData); // Wysyłamy dane do góry
+
+        // Przygotowujemy obiekt ze wszystkim (dane + plik)
+        // App.js zajmie się rozdzieleniem tego na dwa zapytania do API
+        const finalData = {
+            ...formData,
+            // Jeśli data jest pusta, wysyłamy null (wymóg bazy SQL)
+            date_of_termination: formData.date_of_termination === "" ? null : formData.date_of_termination,
+            photo: photoFile // Doklejamy plik (może być null)
+        };
+
+        onSave(finalData);
     };
 
     return (
         <div className="modal-overlay" onClick={onClose}>
-            {/* onClick na overlay zamyka modal (kliknięcie w tło) */}
-
-            {/* stopPropagation sprawia, że kliknięcie w okienko NIE zamyka go */}
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
 
                 <h2>{employeeToEdit ? "✏️ Edytuj Pracownika" : "➕ Dodaj Nowego Pracownika"}</h2>
@@ -56,57 +61,44 @@ function AddEmployeeModal({ isOpen, onClose, onSave, employeeToEdit }) {
                 <form onSubmit={handleSubmit}>
                     <div className="form-group">
                         <label>Imię:</label>
-                        <input
-                            type="text" required
-                            value={formData.first_name}
-                            onChange={e => setFormData({...formData, first_name: e.target.value})}
-                        />
+                        <input type="text" required value={formData.first_name} onChange={e => setFormData({...formData, first_name: e.target.value})} />
                     </div>
-
                     <div className="form-group">
                         <label>Nazwisko:</label>
-                        <input
-                            type="text" required
-                            value={formData.last_name}
-                            onChange={e => setFormData({...formData, last_name: e.target.value})}
-                        />
+                        <input type="text" required value={formData.last_name} onChange={e => setFormData({...formData, last_name: e.target.value})} />
                     </div>
-
                     <div className="form-group">
                         <label>Login:</label>
-                        <input
-                            type="text" required
-                            value={formData.login}
-                            onChange={e => setFormData({...formData, login: e.target.value})}
-                        />
+                        <input type="text" required value={formData.login} onChange={e => setFormData({...formData, login: e.target.value})} />
                     </div>
-
                     <div className="form-group">
                         <label>Rola:</label>
-                        <select
-                            value={formData.role}
-                            onChange={e => setFormData({...formData, role: e.target.value})}
-                        >
-                            <option value="employee">Pracownik (Robol)</option>
-                            <option value="manager">Kierownik (Biurowy)</option>
-                            <option value="admin">Szef (Admin)</option>
+                        <select value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})}>
+                            <option value="employee">Pracownik</option>
+                            <option value="manager">Kierownik</option>
+                            <option value="admin">Admin</option>
                         </select>
                     </div>
 
-                    <div className="form-group">
-                        <label>Data wygaśnięcia konta (opcjonalne):</label>
+                    {/* --- Sekcja zdjęcia (Aktywna) --- */}
+                    <div className="form-group" style={{border: '1px dashed #ccc', padding: '10px', marginTop: '10px'}}>
+                        <label>📸 Zdjęcie twarzy (wymagane przez bramkę):</label>
                         <input
-                            type="date"
-                            value={formData.termination_date}
-                            onChange={e => setFormData({...formData, termination_date: e.target.value})}
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => setPhotoFile(e.target.files[0])}
                         />
+                        {photoFile && <small style={{display:'block', color:'green'}}>Wybrano plik: {photoFile.name}</small>}
+                    </div>
+
+                    <div className="form-group">
+                        <label>Data zwolnienia (opcjonalne):</label>
+                        <input type="date" value={formData.date_of_termination} onChange={e => setFormData({...formData, date_of_termination: e.target.value})} />
                     </div>
 
                     <div className="modal-actions">
                         <button type="button" onClick={onClose} className="btn-cancel">Anuluj</button>
-                        <button type="submit" className="btn-save">
-                            {employeeToEdit ? "Zapisz Zmiany" : "Dodaj"}
-                        </button>
+                        <button type="submit" className="btn-save">{employeeToEdit ? "Zapisz" : "Dodaj"}</button>
                     </div>
                 </form>
             </div>
