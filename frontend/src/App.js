@@ -55,21 +55,34 @@ function App() {
 
   // --- ZAPISYWANIE (Dwuetapowe: Dane -> ID -> Zdjęcie) ---
 
+  // --- ZAPISYWANIE (Edycja po ID lub Dodawanie nowego) ---
+
   const handleSaveEmployee = async (fullData) => {
-    // Rozdzielamy plik od danych tekstowych
+    // 1. Rozdzielamy zdjęcie od reszty danych (bo zdjęcie idzie osobnym strzałem)
     const { photo, ...jsonData } = fullData;
 
     try {
-      let employeeId = editingEmployee ? editingEmployee.id_person : null;
+      let url;
+      let method;
+      let employeeId;
 
-      // KROK 1: Wysyłamy dane tekstowe (JSON)
-      const url = editingEmployee
-          ? `${API_URL}/employees/${employeeId}`
-          : `${API_URL}/employees`;
+      if (editingEmployee) {
+        // === EDYCJA PRACOWNIKA ===
+        // Wykorzystujemy ID, o którym mówił kolega!
+        employeeId = editingEmployee.id_person;
 
-      const method = editingEmployee ? 'PATCH' : 'POST';
+        // Adres wskazuje na konkretnego pracownika (np. .../employees/5)
+        url = `${API_URL}/employees/${employeeId}`;
+        method = 'PATCH'; // Metoda do aktualizacji częściowej
 
-      // Uwaga: Tutaj NIE generujemy już żadnego UUID. Baza sama nada ID.
+        console.log(`Edytuję pracownika o ID: ${employeeId}`);
+      } else {
+        // === TWORZENIE NOWEGO ===
+        url = `${API_URL}/employees`;
+        method = 'POST';
+      }
+
+      // KROK 1: Wysyłamy dane tekstowe (Imię, Nazwisko, Rola...)
       const response = await fetch(url, {
         method: method,
         headers: { 'Content-Type': 'application/json' },
@@ -81,26 +94,34 @@ function App() {
         throw new Error(`Błąd zapisu danych: ${err}`);
       }
 
-      const resData = await response.json();
-
-      // Jeśli dodawaliśmy nowego, bierzemy jego nowe ID z odpowiedzi
-      if (!editingEmployee && resData.id_person) {
-        employeeId = resData.id_person;
+      // Jeśli tworzyliśmy nowego, musimy wyciągnąć jego nowe ID z odpowiedzi,
+      // żeby wiedzieć, gdzie wysłać zdjęcie.
+      if (!editingEmployee) {
+        const resData = await response.json();
+        if (resData.id_person) {
+          employeeId = resData.id_person;
+        }
       }
 
-      // KROK 2: Jeśli wybrano zdjęcie, wysyłamy je na endpoint /photo
+      // KROK 2: Jeśli wybrano zdjęcie (i mamy ID pracownika), wysyłamy je teraz
+      // To działa zarówno przy dodawaniu, jak i przy edycji (jeśli ktoś zmienił zdjęcie)
       if (photo && employeeId) {
         console.log(`Wysyłam zdjęcie dla ID: ${employeeId}...`);
         const formData = new FormData();
         formData.append("photo", photo);
 
-        await fetch(`${API_URL}/employees/${employeeId}/photo`, {
+        // Backend kolegów ma osobny endpoint na zdjęcie: /employees/{id}/photo
+        const photoResponse = await fetch(`${API_URL}/employees/${employeeId}/photo`, {
           method: 'POST',
           body: formData
         });
+
+        if (!photoResponse.ok) {
+          console.warn("Udało się zapisać dane, ale wystąpił błąd przy zdjęciu.");
+        }
       }
 
-      // Odświeżamy listę
+      // Sukces - odświeżamy tabelę i zamykamy okno
       await fetchEmployees();
       setIsModalOpen(false);
       setEditingEmployee(null);
