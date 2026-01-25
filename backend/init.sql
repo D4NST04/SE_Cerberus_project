@@ -27,6 +27,13 @@ CREATE TABLE IF NOT EXISTS hours (
   time_end TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS access_logs (
+    id_log SERIAL PRIMARY KEY,
+    id_employee INT NOT NULL REFERENCES employees(id_person),
+    direction VARCHAR(10) NOT NULL CHECK (direction IN ('IN', 'OUT')),
+    timestamp TIMESTAMP NOT NULL
+);
+
 -- idk, ppl recommend to do this
 -- CREATE INDEX index_hours_employee ON hours(id_employee)
 -- CREATE INDEX index_emploee_login ON employee(login)
