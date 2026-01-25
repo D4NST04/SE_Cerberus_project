@@ -1,3 +1,4 @@
+mod db;
 mod image_processor;
 mod logger;
 mod models;
@@ -5,6 +6,7 @@ mod routes;
 
 use actix_cors::Cors;
 use actix_web::{web, App, HttpServer};
+use db::PostgresRepository;
 use dotenvy::dotenv;
 use sqlx::postgres::PgPoolOptions;
 use std::env;
@@ -27,12 +29,15 @@ async fn main() -> std::io::Result<()> {
 
     println!("Server starting at http://0.0.0.0:8080");
 
+    let repo = PostgresRepository::new(pool);
+    let app_data = web::Data::new(routes::AppState { db: Box::new(repo) });
+
     HttpServer::new(move || {
         let cors = Cors::permissive();
 
         App::new()
             .wrap(cors)
-            .app_data(web::Data::new(routes::AppState { db: pool.clone() }))
+            .app_data(app_data.clone()) // Data is cheap to clone (Arc internal)
             .route("/health", web::get().to(routes::health_check))
             .service(
                 web::scope("/api")
@@ -41,7 +46,10 @@ async fn main() -> std::io::Result<()> {
                     .route("/employees", web::post().to(routes::create_employee))
                     .route("/employees/{id}", web::patch().to(routes::update_employee))
                     .route("/employees/{id}", web::delete().to(routes::delete_employee))
-                    .route("/employees/{id}/photo", web::post().to(routes::upload_employee_photo))
+                    .route(
+                        "/employees/{id}/photo",
+                        web::post().to(routes::upload_employee_photo),
+                    )
                     .route("/hours", web::get().to(routes::get_work_hours))
                     .route("/hours/start", web::post().to(routes::start_shift))
                     .route("/hours/end", web::post().to(routes::end_shift))
@@ -55,4 +63,3 @@ async fn main() -> std::io::Result<()> {
     .run()
     .await
 }
-

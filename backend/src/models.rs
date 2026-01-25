@@ -57,13 +57,13 @@ pub struct UpdateEmployeeRequest {
     pub password: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CheckQrRequest {
     pub employee_id: i32,
     pub direction: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct CheckQrResponse {
     pub exists: bool,
     pub employee_id: i32,
@@ -73,7 +73,7 @@ pub struct CheckQrResponse {
     pub last_name: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct VerifyFaceResponse {
     pub access_granted: bool,
     pub reason: String,
@@ -99,4 +99,9 @@ pub struct AccessLog {
     pub id_employee: i32,
     pub direction: String,
     pub timestamp: NaiveDateTime,
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+pub struct EmployeeIdRequest {
+    pub id_employee: i32,
 }
