@@ -215,7 +215,7 @@ pub async fn verify_face(data: web::Data<AppState>, mut payload: Multipart) -> i
     {
         Ok(Some(row)) => row.get("face_embedded"),
         Ok(None) => {
-            let _ = fs::remove_file(p_path);
+            log_failed_attempt(emp_id, "employee_not_found", &p_path);
             return HttpResponse::Ok().json(VerifyFaceResponse {
                 access_granted: false,
                 reason: "employee_not_found".to_string(),
@@ -229,7 +229,7 @@ pub async fn verify_face(data: web::Data<AppState>, mut payload: Multipart) -> i
     };
 
     if stored_embedding.is_none() {
-        let _ = fs::remove_file(p_path);
+        log_failed_attempt(emp_id, "no_face_data_registered", &p_path);
         return HttpResponse::Ok().json(VerifyFaceResponse {
             access_granted: false,
             reason: "no_face_data_registered".to_string(),
@@ -246,8 +246,6 @@ pub async fn verify_face(data: web::Data<AppState>, mut payload: Multipart) -> i
         }
     };
 
-    let _ = fs::remove_file(p_path);
-
     let stored_bytes = stored_embedding.unwrap();
     let stored_floats: Vec<f32> = stored_bytes
         .chunks_exact(4)
@@ -261,11 +259,13 @@ pub async fn verify_face(data: web::Data<AppState>, mut payload: Multipart) -> i
     let threshold = 0.5; // Tunable
 
     if similarity > threshold {
+        let _ = fs::remove_file(p_path);
         HttpResponse::Ok().json(VerifyFaceResponse {
             access_granted: true,
             reason: "face_matched".to_string(),
         })
     } else {
+        log_failed_attempt(emp_id, "face_mismatched", &p_path);
         HttpResponse::Ok().json(VerifyFaceResponse {
             access_granted: false,
             reason: "face_mismatched".to_string(),
@@ -496,3 +496,35 @@ pub async fn end_shift(
     }
 }
 
+fn log_failed_attempt(employee_id: i32, reason: &str, temp_photo_path: &str) {
+    if let Err(e) = fs::create_dir_all("uploads/failed_attempts") {
+         eprintln!("Failed to create directory: {}", e);
+         return;
+    }
+
+    let filename = std::path::Path::new(temp_photo_path)
+        .file_name()
+        .unwrap_or_default()
+        .to_str()
+        .unwrap_or_default();
+    let new_path = format!("uploads/failed_attempts/{}", filename);
+
+    if let Err(e) = fs::rename(temp_photo_path, &new_path) {
+        // Fallback copy
+        if let Err(e) = fs::copy(temp_photo_path, &new_path) {
+             eprintln!("Failed to copy failed attempt photo: {}", e);
+             return;
+        }
+        let _ = fs::remove_file(temp_photo_path);
+    }
+
+    let req = CreateErrorLogRequest {
+        employee: employee_id.to_string(),
+        error_description: reason.to_string(),
+        image: Some(new_path),
+    };
+
+    if let Err(e) = logger::log_error(req) {
+        eprintln!("Failed to log error: {}", e);
+    }
+}
