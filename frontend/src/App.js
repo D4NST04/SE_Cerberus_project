@@ -5,6 +5,7 @@ import './App.css';
 import EmployeeTable from './components/EmployeeTable';
 import LogTable from './components/LogTable';
 import AddEmployeeModal from './components/AddEmployeeModal';
+import Login from './components/Login';
 
 function App() {
   const API_URL = 'http://localhost:8080/api';
@@ -18,6 +19,7 @@ function App() {
   const [dbLogs, setDbLogs] = useState([]);       // Godziny pracy (WorkHours)
   const [securityLogs, setSecurityLogs] = useState([]); // Logi z bramek (AccessLogs)
   const [isLoading, setIsLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
   // --- START APLIKACJI ---
   useEffect(() => {
@@ -232,10 +234,24 @@ function App() {
 
   // --- INTERFEJS (JSX) ---
 
+  if (!isAuthenticated) {
+    return <Login onLogin={(status) => setIsAuthenticated(status)} />;
+  }
+
   return (
       <div className="App">
         <header className="App-header">
-          <h1>🐶 Cerberus - Panel Administratora</h1>
+          <div style={{width: '100%', padding: '10px', textAlign: 'right'}}>
+            <button
+                onClick={() => setIsAuthenticated(false)}
+                style={{background: 'red', color: 'white', border: 'none', padding: '5px 10px', cursor: 'pointer'}}>
+              Wyloguj
+            </button>
+          </div>
+
+          <h1>Cerberus - Panel Administratora</h1>
+
+          {/* ... RESZTA TWOJEGO KODU BEZ ZMIAN ... */}
 
           <div className="tabs">
             <button className={activeTab === 'employees' ? 'tab active' : 'tab'} onClick={() => setActiveTab('employees')}>
@@ -264,7 +280,6 @@ function App() {
                 )}
               </>
           ) : (
-              // Przekazujemy funkcję eksportu do tabeli logów
               <LogTable logs={allLogs} onExport={handleExportCSV} />
           )}
 

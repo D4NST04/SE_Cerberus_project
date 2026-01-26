@@ -46,6 +46,14 @@ function AddEmployeeModal({ isOpen, onClose, onSave, employeeToEdit }) {
     const handleSubmit = (e) => {
         e.preventDefault();
 
+        if (photoFile) {
+            // Sprawdzamy, czy typ pliku (MIME type) zaczyna się od "image/"
+            // Np. "image/jpeg", "image/png", "image/webp"
+            if (!photoFile.type.startsWith("image/")) {
+                alert("Błąd: Wybrany plik nie jest obrazkiem! Proszę wybrać plik JPG lub PNG.");
+                return; // Przerywamy wysyłanie formularza
+            }
+        }
         // Pakujemy wszystko w jeden obiekt
         const finalData = {
             ...formData,
