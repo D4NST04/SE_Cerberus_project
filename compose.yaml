@@ -44,6 +44,8 @@ services:
     build:
       context: ./station
       dockerfile: Dockerfile-station
+    depends_on:
+      - backend
     privileged: true
     environment:
       - DISPLAY=${DISPLAY:-:1}
@@ -59,6 +61,8 @@ services:
     build:
       context: ./station
       dockerfile: Dockerfile-station
+    depends_on:
+      - backend
     privileged: true
     environment:
       - DISPLAY=${DISPLAY:-:1}
