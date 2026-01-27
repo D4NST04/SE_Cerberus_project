@@ -30,6 +30,8 @@ class Contact_API:
             "employee_id" : "213769420"
         }
 
+        print( self.qr_url )
+
     def _headers( self ):
         if self.token:
             return {
@@ -37,7 +39,7 @@ class Contact_API:
             }
         return {}
 
-    def check_qr( self, qr_code : str ):
+    def check_qr( self, qr_code : int ):
 
         # return self.mock_good_qr
 

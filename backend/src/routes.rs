@@ -256,7 +256,10 @@ pub async fn verify_face(data: web::Data<AppState>, mut payload: Multipart) -> i
         .collect();
 
     let similarity = cosine_similarity(&new_embedding, &stored_floats);
-    let threshold = 0.5; // Tunable
+    let threshold = 0.8; // Tunable
+
+    println!("similarity: {}", similarity);
+
 
     if similarity > threshold {
         let _ = fs::remove_file(p_path);
@@ -312,8 +315,8 @@ pub async fn create_employee(
     data: web::Data<AppState>,
     req: web::Json<CreateEmployeeRequest>,
 ) -> impl Responder {
-    let query = "INSERT INTO employees (id_person, first_name, last_name, role, login, date_of_termination) 
-                 VALUES ((SELECT COALESCE(MAX(id_person), 0) + 1 FROM employees), $1, $2, $3, $4, $5) 
+    let query = "INSERT INTO employees (id_person, first_name, last_name, role, login, date_of_termination)
+                 VALUES ((SELECT COALESCE(MAX(id_person), 0) + 1 FROM employees), $1, $2, $3, $4, $5)
                  RETURNING id_person";
 
     match sqlx::query(query)

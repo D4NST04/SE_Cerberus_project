@@ -40,7 +40,7 @@ class MainWindow:
 
 
 # wczytanie przykładowego JPEG
-        placeholder_path = "/app/jew.jpg"  # podmień na swój plik
+        placeholder_path = "/app/shrek.jpg"  # podmień na swój plik
         try:
             img = Image.open(placeholder_path)
             img = img.resize((640, 480))  # opcjonalne skalowanie
