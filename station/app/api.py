@@ -39,7 +39,7 @@ class Contact_API:
 
     def check_qr( self, qr_code : str ):
 
-        return self.mock_good_qr
+        # return self.mock_good_qr
 
         try:
             payload = {
@@ -47,14 +47,19 @@ class Contact_API:
                 "direction"   : self.direction
             }
 
-            response = requests.get(
+            response = requests.post(
                 self.qr_url,
                 headers = self._headers(),
                 json = payload,
                 timeout = self.timeout
             )
+
             response.raise_for_status()
             return response.json()
+
+        except requests.Timeout:
+            print( "[API] Timeout - serwer nie odpowiada" )
+            return None
 
         except requests.RequestException as e:
             print( f"[API] check_qr error: {e}" )
@@ -66,7 +71,7 @@ class Contact_API:
             if not ok:
                 return None
 
-            file = { "photo" : ( "frame.jpg", buf.tobytes(), "image/jpeg") }
+            files = { "photo" : ( "frame.jpg", buf.tobytes(), "image/jpeg") }
             data = {
                 "employee_id" : employee_id,
                 "direction"   : self.direction
@@ -75,13 +80,17 @@ class Contact_API:
             response = requests.post(
                 self.face_url,
                 headers = self._headers(),
-                files = file,
+                files = files,
                 data = data,
                 timeout = self.timeout
             )
 
             response.raise_for_status()
             return response.json()
+
+        except requests.Timeout:
+            print( "[API] Timeout - serwer nie odpowiada" )
+            return None
 
         except requests.RequestException as e:
             print( f"[API] check_face error: {e}")

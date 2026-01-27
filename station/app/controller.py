@@ -10,23 +10,27 @@ class Controller:
         self.gui = gui
 
         self.api = Contact_API()
-        # Camera initialization
         self.camera = CameraControl( callback_qr=None )
+
         self.FPS = 30
         self.running = True
-        self.busy = False
+
+        self.is_processing = False
+        self.last_qr = None
+        self.colldown_timer = 0
 
         # start main loop in the background
         threading.Thread( target=self.loop, daemon=True).start()
 
-        self.qr_handling = False
+        # self.qr_handling = False
+
+        self.employee_data = {}
+
+        self.prepare_procedure()
 
     def loop( self ):
         while self.running:
-            if self.busy:
-                time.sleep( 0.05 )
-                continue
-
+            # --- read the frame ---
             frame = self.camera.read_frame()
             if frame is None:
                 continue
@@ -37,45 +41,92 @@ class Controller:
             )
 
             # --- qr handling ---
-            if not self.qr_handling:
-                self.handle_qr( frame )
+            if self.employee_data[ "qr" ] is None:
+                qr_code = self.camera.detect_qr( frame )
+                if qr_code:
+                    self.employee_data[ "qr" ] = qr_code
+                    threading.Thread(
+                        target=self.process_qr_logic,
+                        args=( qr_code,),
+                        daemon=True
+                    ).start()
+
+            if self.employee_data[ "name" ] is not None:
+                print( "api face")
 
             time.sleep( 1 / self.FPS )
 
-    def handle_qr( self, frame ):
-        qr_code = self.camera.detect_qr( frame )
-        if not qr_code:
-            return
+    def prepare_procedure( self ):
+        self.employee_data = {
+            "qr" : None,
+            "name" : None,
+            "face_match" : None
+        }
 
-        self.qr_handling = True
+    def process_qr_logic( self, qr_code ):
+        print( f"Asking about qr code: {qr_code}" )
 
         self.root.after(
             0,
-            lambda q=qr_code: self.gui.set_status(
-                f"Pracownik nr {q}: Pobieram dane..."
-            )
+            lambda: self.gui.set_status( f'Pobieranie danych pracownika {qr_code}...' )
         )
 
         data = self.api.check_qr( qr_code )
 
-        if not data:
-            self.root.after(
-                0,
-                lambda: self.gui.set_info( "Błąd API" )
-            )
-            self.qr_handling = False
+        # --- If we get 500 / 503  or Timeout errors from API ---
+        if data is None:
+            self.root.after( 0, lambda: self.gui.set_info( "Błąd połączenia z serwerem" ) )
+            self.employee_data[ "qr" ] = None
             return
 
+        # --- If the worker does not exists ---
+        if data.get( "exists" ) is False:
+            self.root.after( 0, lambda: self.gui.set_info( "PRACOWNIK NIEZNANY" ) )
+            self.employee_data[ "qr" ] = None
+            # TODO: Send to API pic of his face
+            return
+
+        # --- Worker found ---
+        first_name = data.get("first_name", "")
+        last_name = data.get("last_name", "")
+        full_name = f"{first_name} {last_name}"
+        self.employee_data[ "name" ] = full_name
+
+        success_text = f"Pracownik {qr_code}: {full_name}"
+        self.root.after( 0, lambda: self.gui.set_status( success_text ) )
 
 
-        name = f"{data.get('first_name', '')} {data.get('last_name', '')}"
+    def process_face_logic( self, frame ):
+        print( "Verifying face" )
 
         self.root.after(
             0,
-            lambda: self.gui.set_status(
-                f"Pracownik nr {qr_code}: {name}"
-            )
+            lambda: self.gui.set_info( "Sprawdzam zgodność twarzy" )
         )
+
+        data = self.api.check_face( frame, self.employee_data[ "qr" ] )
+
+        # --- If we get 500 / 503 or Timeout errors from API ---
+        if data is None:
+            self.root.after( 0, lambda: self.gui.set_info( "Błąd połączenia z serwerem" ) )
+            self.employee_data[ "qr" ] = None
+            return
+
+        # --- If the face does not match ---
+        if data.get( "access_granted" ) is False:
+            if data.get( "reason" ) == "face_mismatched":
+                info_text = "TWARZ NIE ZGODNA"
+
+            if data.get( "reason" ) == "invalid_direction":
+                info_text = "BŁĄD: Stacja nie odnotowała poprzedniego przejścia przez bramki"
+
+            self.root.after( 0, lambda: self.gui.set_info( info_text ) )
+            self.employee_data[ "qr" ] = None
+            return
+
+        # --- face matched ---
+        self.employee_data[ "face_match" ] = True
+        self.root.after( 0, lambda: self.gui.set_info( "ZGODA NA WEJSCIE" ))
 
 
 
