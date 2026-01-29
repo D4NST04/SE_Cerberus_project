@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 
-// Dodajemy prop 'employeeToEdit' - jeśli istnieje, to znaczy że edytujemy
 function AddEmployeeModal({ isOpen, onClose, onSave, employeeToEdit }) {
 
     const [formData, setFormData] = useState({
@@ -8,30 +7,35 @@ function AddEmployeeModal({ isOpen, onClose, onSave, employeeToEdit }) {
         last_name: "",
         role: "employee",
         login: "",
-        termination_date: "" // NOWE POLE
+        date_of_termination: "" // Zmienione na zgodne z bazą danych
     });
 
-    // MAGIA: Ten kawałek kodu wykona się ZAWSZE, gdy otworzysz okno (zmieni się isOpen)
-    // albo gdy zmienisz pracownika do edycji.
+    // Osobny stan na plik zdjęcia
+    const [photoFile, setPhotoFile] = useState(null);
+
     useEffect(() => {
         if (isOpen) {
+            setPhotoFile(null); // Reset zdjęcia przy każdym otwarciu okna
+
             if (employeeToEdit) {
-                // TRYB EDYCJI: Wpisujemy dane istniejącego pracownika w pola
+                // TRYB EDYCJI
                 setFormData({
                     first_name: employeeToEdit.first_name,
                     last_name: employeeToEdit.last_name,
                     role: employeeToEdit.role,
-                    login: employeeToEdit.login,
-                    termination_date: employeeToEdit.termination_date || "" // NOWE
+                    // Login może być null w bazie, więc dajemy pusty string w razie czego
+                    login: employeeToEdit.login || "",
+                    // Data też może być null
+                    date_of_termination: employeeToEdit.date_of_termination || ""
                 });
             } else {
-                // TRYB DODAWANIA: Czyścimy pola
+                // TRYB DODAWANIA
                 setFormData({
                     first_name: "",
                     last_name: "",
                     role: "employee",
                     login: "",
-                    termination_date: "" // NOWE
+                    date_of_termination: ""
                 });
             }
         }
@@ -41,14 +45,29 @@ function AddEmployeeModal({ isOpen, onClose, onSave, employeeToEdit }) {
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        onSave(formData); // Wysyłamy dane do góry
+
+        if (photoFile) {
+            // Sprawdzamy, czy typ pliku (MIME type) zaczyna się od "image/"
+            // Np. "image/jpeg", "image/png", "image/webp"
+            if (!photoFile.type.startsWith("image/")) {
+                alert("Błąd: Wybrany plik nie jest obrazkiem! Proszę wybrać plik JPG lub PNG.");
+                return; // Przerywamy wysyłanie formularza
+            }
+        }
+        // Pakujemy wszystko w jeden obiekt
+        const finalData = {
+            ...formData,
+            // Jeśli data jest pusta, wysyłamy null (żeby SQL nie zgłaszał błędu formatu)
+            date_of_termination: formData.date_of_termination === "" ? null : formData.date_of_termination,
+            photo: photoFile // Doklejamy plik (może być null, jeśli nie wybrano)
+        };
+
+        // Wysyłamy do App.js (tam funkcja handleSaveEmployee to obsłuży)
+        onSave(finalData);
     };
 
     return (
         <div className="modal-overlay" onClick={onClose}>
-            {/* onClick na overlay zamyka modal (kliknięcie w tło) */}
-
-            {/* stopPropagation sprawia, że kliknięcie w okienko NIE zamyka go */}
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
 
                 <h2>{employeeToEdit ? "✏️ Edytuj Pracownika" : "➕ Dodaj Nowego Pracownika"}</h2>
@@ -57,7 +76,8 @@ function AddEmployeeModal({ isOpen, onClose, onSave, employeeToEdit }) {
                     <div className="form-group">
                         <label>Imię:</label>
                         <input
-                            type="text" required
+                            type="text"
+                            required
                             value={formData.first_name}
                             onChange={e => setFormData({...formData, first_name: e.target.value})}
                         />
@@ -66,7 +86,8 @@ function AddEmployeeModal({ isOpen, onClose, onSave, employeeToEdit }) {
                     <div className="form-group">
                         <label>Nazwisko:</label>
                         <input
-                            type="text" required
+                            type="text"
+                            required
                             value={formData.last_name}
                             onChange={e => setFormData({...formData, last_name: e.target.value})}
                         />
@@ -75,7 +96,8 @@ function AddEmployeeModal({ isOpen, onClose, onSave, employeeToEdit }) {
                     <div className="form-group">
                         <label>Login:</label>
                         <input
-                            type="text" required
+                            type="text"
+                            required
                             value={formData.login}
                             onChange={e => setFormData({...formData, login: e.target.value})}
                         />
@@ -87,26 +109,37 @@ function AddEmployeeModal({ isOpen, onClose, onSave, employeeToEdit }) {
                             value={formData.role}
                             onChange={e => setFormData({...formData, role: e.target.value})}
                         >
-                            <option value="employee">Pracownik (Robol)</option>
-                            <option value="manager">Kierownik (Biurowy)</option>
-                            <option value="admin">Szef (Admin)</option>
+                            <option value="employee">Pracownik</option>
+                            <option value="manager">Kierownik</option>
+                            <option value="admin">Admin</option>
                         </select>
                     </div>
 
+                    {/* --- Sekcja zdjęcia --- */}
+                    <div className="form-group" style={{border: '2px dashed #ccc', padding: '15px', borderRadius: '8px', marginTop: '10px', backgroundColor: '#f9f9f9'}}>
+                        <label style={{fontWeight: 'bold'}}>📸 Zdjęcie twarzy (do weryfikacji):</label>
+                        <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => setPhotoFile(e.target.files[0])}
+                            style={{marginTop: '5px'}}
+                        />
+                        {photoFile && <small style={{display:'block', color:'green', marginTop: '5px'}}>Wybrano plik: {photoFile.name}</small>}
+                        {!photoFile && employeeToEdit && <small style={{display:'block', color:'#666', marginTop: '5px'}}>Pozostaw puste, aby zachować obecne zdjęcie.</small>}
+                    </div>
+
                     <div className="form-group">
-                        <label>Data wygaśnięcia konta (opcjonalne):</label>
+                        <label>Data zwolnienia (opcjonalne):</label>
                         <input
                             type="date"
-                            value={formData.termination_date}
-                            onChange={e => setFormData({...formData, termination_date: e.target.value})}
+                            value={formData.date_of_termination}
+                            onChange={e => setFormData({...formData, date_of_termination: e.target.value})}
                         />
                     </div>
 
                     <div className="modal-actions">
                         <button type="button" onClick={onClose} className="btn-cancel">Anuluj</button>
-                        <button type="submit" className="btn-save">
-                            {employeeToEdit ? "Zapisz Zmiany" : "Dodaj"}
-                        </button>
+                        <button type="submit" className="btn-save">{employeeToEdit ? "Zapisz" : "Dodaj"}</button>
                     </div>
                 </form>
             </div>
