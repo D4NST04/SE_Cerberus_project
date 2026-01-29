@@ -1,0 +1,165 @@
+import threading
+import time
+
+from camera import CameraControl
+from api import Contact_API
+
+class Controller:
+    def __init__( self, root, gui ):
+        self.root = root
+        self.gui = gui
+
+        self.api = Contact_API()
+        self.camera = CameraControl( callback_qr=None )
+
+        self.FPS = 30
+        self.running = True
+
+        self.is_processing = False
+        self.last_qr = None
+        self.colldown_timer = 0
+
+        # start main loop in the background
+        threading.Thread( target=self.loop, daemon=True).start()
+
+        # self.qr_handling = False
+
+        self.employee_data = {}
+
+        self.prepare_procedure()
+
+    def loop( self ):
+        while self.running:
+            # --- read the frame ---
+            frame = self.camera.read_frame()
+            if frame is None:
+                continue
+
+            # --- update preview in GUI ---
+            self.root.after(
+                0, lambda f=frame: self.gui.set_camera_image( f )
+            )
+
+            # --- qr handling ---
+            if self.employee_data[ "qr" ] is None:
+                qr_code = self.camera.detect_qr( frame )
+                if qr_code:
+                    try:
+                        qr_code = int( qr_code )
+                        self.employee_data[ "qr" ] = qr_code
+                        threading.Thread(
+                            target=self.process_qr_logic,
+                            args=( qr_code,),
+                            daemon=True
+                        ).start()
+
+                    except ValueError:
+                        self.root.after(
+                            0,
+                            lambda: self.gui.set_info( "Błędny kod QR" )
+                        )
+
+            # --- face recognition handling ---
+            if self.employee_data[ "face_processing" ] is None:
+                self.employee_data[ "face_processing" ] = True
+                threading.Thread(
+                    target=self.handle_face_recognition,
+                    daemon=True
+                )
+
+
+            time.sleep( 1 / self.FPS )
+
+    def prepare_procedure( self ):
+        self.employee_data = {
+            "qr" : None,
+            "name" : None,
+            "face_processing": None,
+            "face_match" : None
+        }
+
+    def process_qr_logic( self, qr_code ):
+        print( f"Asking about qr code: {qr_code}" )
+
+        self.root.after(
+            0,
+            lambda: self.gui.set_status( f'Pobieranie danych pracownika {qr_code}...' )
+        )
+
+        data = self.api.check_qr( qr_code )
+
+        # --- If we get 500 / 503  or Timeout errors from API ---
+        if data is None:
+            self.root.after( 0, lambda: self.gui.set_info( "Błąd połączenia z serwerem" ) )
+            self.employee_data[ "qr" ] = None
+            return
+
+        # --- If the worker does not exists ---
+        if data.get( "exists" ) is False:
+            self.root.after( 0, lambda: self.gui.set_info( "PRACOWNIK NIEZNANY" ) )
+            self.employee_data[ "qr" ] = None
+
+            # --- send to API frame at the time of incident ---
+            self.api.check_face(
+                self.camera.read_frame(),
+                employee_id=0
+            )
+            return
+
+        # --- Worker found ---
+        first_name = data.get("first_name", "")
+        last_name = data.get("last_name", "")
+        full_name = f"{first_name} {last_name}"
+        self.employee_data[ "name" ] = full_name
+
+        success_text = f"Pracownik {qr_code}: {full_name}"
+        self.root.after( 0, lambda: self.gui.set_status( success_text ) )
+
+    def handle_face_recognition( self ):
+        for i in range( 3, 0, -1 ):
+            self.root.after(
+                0,
+                lambda: self.gui.set_info( f"Zdjęcie twarzy za {i}s" )
+            )
+            time.sleep( 1 )
+
+        self.process_face_logic( self.camera.read_frame() )
+
+    def process_face_logic( self, frame ):
+        print( "Verifying face" )
+
+        self.root.after(
+            0,
+            lambda: self.gui.set_info( "Sprawdzam zgodność twarzy" )
+        )
+
+        data = self.api.check_face( frame, self.employee_data[ "qr" ] )
+
+        # --- If we get 500 / 503 or Timeout errors from API ---
+        if data is None:
+            self.root.after( 0, lambda: self.gui.set_info( "Błąd połączenia z serwerem" ) )
+            self.employee_data[ "qr" ] = None
+            return
+
+        # --- If the face does not match ---
+        if data.get( "access_granted" ) is False:
+            if data.get( "reason" ) == "face_mismatched":
+                info_text = "TWARZ NIE ZGODNA"
+
+            if data.get( "reason" ) == "invalid_direction":
+                info_text = "BŁĄD: Stacja nie odnotowała poprzedniego przejścia przez bramki"
+
+            self.root.after( 0, lambda: self.gui.set_info( info_text ) )
+            self.employee_data[ "qr" ] = None
+            return
+
+        # --- face matched ---
+        self.employee_data[ "face_match" ] = True
+        self.root.after( 0, lambda: self.gui.set_info( "ZGODA NA WEJŚCIE" ))
+
+
+
+
+    def stop( self ):
+        self.running = False
+        self.camera.release()
