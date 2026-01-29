@@ -116,6 +116,8 @@ class Controller:
             time.sleep(3)
             return False
 
+        # self.api.acknowledge_decision( int(qr_code), allowed=True)
+
         return True
 
     # --- POMOCNIKI ---
