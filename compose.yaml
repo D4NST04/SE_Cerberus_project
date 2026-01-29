@@ -3,13 +3,13 @@ name: cerberus
 
 services:
   frontend:
-  #   # technically this should do the same thing as just build: frontend, but
-  #   # this is more clear to me
+    #   # technically this should do the same thing as just build: frontend, but
+    #   # this is more clear to me
     build:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-     - 3000:80
+      - 3000:80
     depends_on:
       - db
 
@@ -20,9 +20,11 @@ services:
       context: backend
     environment:
       POSTGRES_PASSWORD: root
-      POSTGRES_USER: root
+      DATABASE_URL: postgres://postgres:root@db:5432/postgres
     volumes:
       - ./backend/src:/code/src
+      - ./backend/error_logs.csv:/app/error_logs.csv
+      - ./backend/uploads:/app/uploads
     depends_on:
       - db
 
@@ -37,6 +39,34 @@ services:
       - db-data:/var/lib/postgresql/data
       # https://hub.docker.com/_/postgres#initialization-scripts
       - ./backend/init.sql:/docker-entrypoint-initdb.d/init-user-db.sql
+
+  station_in:
+    build:
+      context: ./station
+      dockerfile: Dockerfile-station
+    privileged: true
+    environment:
+      - DISPLAY=${DISPLAY:-:1}
+      - STATION_DIRECTION=IN
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    devices:
+      - /dev/video0:/dev/video0
+    network_mode: host
+
+  station_out:
+    build:
+      context: ./station
+      dockerfile: Dockerfile-station
+    privileged: true
+    environment:
+      - DISPLAY=${DISPLAY:-:1}
+      - STATION_DIRECTION=OUT
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    devices:
+      - /dev/video0:/dev/video0
+    network_mode: host
 
 volumes:
   db-data: {}

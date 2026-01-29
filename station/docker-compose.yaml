@@ -1,0 +1,17 @@
+name: cerberus_station
+
+services:
+  station:
+    build: .
+    container_name: entrance_station
+    privileged: true
+    environment:
+      # So the app knows where to send graphical content
+      - DISPLAY=${DISPLAY}
+      - API_URL={api_url}
+    volumes:
+      # Gives the app permissions to use our monitor
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - ./config.json:/app/config.json
+    devices:
+      - /dev/video0:/dev/video0

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import './App.css';
 
 // Importujemy nasze nowe komponenty
@@ -12,11 +12,40 @@ function App() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState(null); // null = tryb dodawania
 
-  const [employees, setEmployees] = useState([
-    { id_person: 1, first_name: "Janusz", last_name: "Szefowski", role: "admin", login: "boss" },
-    { id_person: 10, first_name: "Michał", last_name: "Programista", role: "manager", login: "dev_mike" },
-    { id_person: 1001, first_name: "Marek", last_name: "Operator", role: "employee", login: "worker_01" },
-  ]);
+  // ZMIANA 1: Zaczynamy od pustej listy. Dane przyjdą z backendu.
+  const [employees, setEmployees] = useState([]);
+
+  // Stan ładowania i błędów (opcjonalnie, dla lepszego UX)
+  const [isLoading, setIsLoading] = useState(true);
+
+  // ZMIANA 2: Pobieranie danych z API przy starcie
+  useEffect(() => {
+    fetchEmployees();
+  }, []);
+
+  const fetchEmployees = async () => {
+    try {
+      // Backend (Rust) wystawia endpoint pod tym adresem:
+      const response = await fetch('http://localhost:8080/api/employees');
+
+      if (!response.ok) {
+        throw new Error('Błąd pobierania danych z serwera');
+      }
+
+      const data = await response.json();
+      console.log("Pobrano pracowników:", data);
+      setEmployees(data);
+      setIsLoading(false);
+    } catch (error) {
+      console.error("Nie udało się połączyć z backendem:", error);
+      // Fallback: Jeśli backend leży, pokaż stare dane testowe, żebyś widział interfejs
+      setEmployees([
+        { id_person: 1, first_name: "Janusz", last_name: "Szefowski (OFFLINE)", role: "admin", login: "boss" },
+        { id_person: 2, first_name: "Błąd", last_name: "Połączenia", role: "error", login: "err" },
+      ]);
+      setIsLoading(false);
+    }
+  };
 
   const [logs] = useState([
     { id: 1, time: "2025-11-07 07:55", employee: "Marek Operator", status: "success", info: "Wejście poprawne" },
@@ -26,51 +55,122 @@ function App() {
 
   // --- FUNKCJE LOGIKI (HANDLERS) ---
 
-  const handleDelete = (id) => {
+  const handleDelete = async (id) => {
     if (window.confirm("Czy na pewno chcesz zwolnić tego pracownika?")) {
-      setEmployees(employees.filter((emp) => emp.id_person !== id));
+      try {
+        const response = await fetch(`http://localhost:8080/api/employees/${id}`, {
+          method: 'DELETE',
+        });
+
+        if (!response.ok) {
+          throw new Error('Błąd usuwania pracownika');
+        }
+
+        setEmployees(employees.filter((emp) => emp.id_person !== id));
+      } catch (error) {
+        console.error("Nie udało się usunąć pracownika:", error);
+        alert("Nie udało się usunąć pracownika.");
+      }
     }
   };
 
   // Ta funkcja obsługuje TERAZ zarówno dodawanie jak i edycję
   const handleSaveEmployee = (formData) => {
+    // 1. Generujemy bezpieczny, losowy token (np. "36b8f84d-df4e...")
+    const qrToken = crypto.randomUUID();
+
     if (editingEmployee) {
-      // --- SCENARIUSZ 1: EDYCJA ---
-      // Tworzymy nową listę, podmieniając tylko tego jednego pracownika
+      // --- EDYCJA ---
       const updatedList = employees.map((emp) => {
         if (emp.id_person === editingEmployee.id_person) {
-          return { ...emp, ...formData }; // Zostawiamy stare ID, nadpisujemy imię/nazwisko
+          // Przy edycji zazwyczaj NIE zmieniamy tokena QR, żeby nie drukować karty na nowo.
+          // Ale jeśli pole było puste (stary pracownik), to możemy mu je dodać teraz:
+          return {
+            ...emp,
+            ...formData,
+            account_number: emp.account_number || qrToken
+          };
         }
-        return emp; // Resztę zostawiamy bez zmian
+        return emp;
       });
       setEmployees(updatedList);
     } else {
-      // --- SCENARIUSZ 2: DODAWANIE ---
+      // --- DODAWANIE ---
       const newPerson = {
+        // Tymczasowe ID dla Reacta (zostanie nadpisane przez SERIAL w bazie)
         id_person: Date.now(),
+
         ...formData,
-        photo_path: "placeholder"
+
+        // --- TUTAJ DZIEJE SIĘ MAGIA ---
+        account_number: qrToken,  // Zapisujemy UUID w polu konta
+
+        // Reszta pól na null (uzupełni backend/baza)
+        face_embedded: null,
+        photo_path: null,
+        date_of_termination: null
       };
+
+      console.log("Nowy pracownik z tokenem QR:", newPerson);
       setEmployees([...employees, newPerson]);
     }
 
-    setIsModalOpen(false); // Zamykamy
-    setEditingEmployee(null); // Czyścimy
+    setIsModalOpen(false);
+    setEditingEmployee(null);
   };
 
   const handleAddClick = () => {
-    setEditingEmployee(null); // Resetujemy edycję (tryb dodawania)
+    setEditingEmployee(null);
     setIsModalOpen(true);
   };
 
   const handleEditClick = (employee) => {
-    setEditingEmployee(employee); // Zapamiętaj kogo edytujemy
-    setIsModalOpen(true);         // Otwórz okno
+    setEditingEmployee(employee);
+    setIsModalOpen(true);
   };
 
-  const handleGenerateQR = (id) => {
-    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${id}`;
+  const handleGenerateQR = (employee) => {
+    // Pobieramy token z pola account_number.
+    // Fallback: Jeśli pracownik jest stary i nie ma tokena, użyj id_person, żeby cokolwiek zadziałało.
+    const qrContent = employee.account_number || employee.id_person;
+
+    // Generujemy link do obrazka
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${qrContent}`;
+
+    // Otwieramy w nowym oknie
     window.open(qrUrl, "_blank", "width=300,height=300");
+  };
+
+  const handleDownloadQR = async (employee) => {
+    // 1. Ustalamy treść kodu (UUID lub ID)
+    const qrContent = employee.account_number || employee.id_person;
+
+    // 2. Adres API
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${qrContent}`;
+
+    try {
+      // 3. Pobieramy obrazek jako "Blob" (plik binarny)
+      const response = await fetch(qrUrl);
+      const blob = await response.blob();
+
+      // 4. Tworzymy wirtualny link do pobrania
+      const downloadLink = document.createElement("a");
+      downloadLink.href = URL.createObjectURL(blob);
+
+      // 5. Nadajemy ładną nazwę pliku: QR_Nazwisko_Imie.png
+      downloadLink.download = `QR_${employee.last_name}_${employee.first_name}.png`;
+
+      // 6. Klikamy w link programowo i sprzątamy
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      document.body.removeChild(downloadLink);
+
+    } catch (error) {
+      console.error("Błąd pobierania QR:", error);
+      alert("Coś poszło nie tak przy pobieraniu. Otwieram w nowym oknie.");
+      // Fallback: jak pobieranie nie zadziała, otwórz po staremu
+      window.open(qrUrl, "_blank");
+    }
   };
 
   const handleExportCSV = () => {
@@ -112,17 +212,21 @@ function App() {
           {/* Zawartość zależna od zakładki */}
           {activeTab === 'employees' ? (
               <>
-                {/* Przycisk dodawania jest nad tabelą, ale poza komponentem tabeli */}
                 <div style={{width: '90%', maxWidth: '1000px', display: 'flex', justifyContent: 'flex-end', marginBottom: '-40px', zIndex: 10, position: 'relative'}}>
                   <button className="btn-add" onClick={handleAddClick}>+ Dodaj Pracownika</button>
                 </div>
 
-                <EmployeeTable
-                    employees={employees}
-                    onDelete={handleDelete}
-                    onGenerateQR={handleGenerateQR}
-                    onEdit={handleEditClick} // Przekazujemy nową funkcję
-                />
+                {isLoading ? (
+                    <p>Ładowanie danych z bazy...</p>
+                ) : (
+                    <EmployeeTable
+                        employees={employees}
+                        onDelete={handleDelete}
+                        onGenerateQR={handleGenerateQR}
+                        onDownloadQR={handleDownloadQR}
+                        onEdit={handleEditClick}
+                    />
+                )}
               </>
           ) : (
               <LogTable
@@ -131,12 +235,11 @@ function App() {
               />
           )}
 
-          {/* Modal jest zawsze w kodzie, ale wyświetla się tylko gdy isOpen=true */}
           <AddEmployeeModal
               isOpen={isModalOpen}
               onClose={() => setIsModalOpen(false)}
-              onSave={handleSaveEmployee} // Tu teraz jest nowa funkcja
-              employeeToEdit={editingEmployee} // Przekazujemy dane do edycji
+              onSave={handleSaveEmployee}
+              employeeToEdit={editingEmployee}
           />
 
         </header>

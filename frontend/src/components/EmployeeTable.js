@@ -1,7 +1,7 @@
 import React from 'react';
 
 // Ten komponent przyjmuje listę pracowników i funkcje do obsługi przycisków
-function EmployeeTable({ employees, onDelete, onGenerateQR, onEdit }) {
+function EmployeeTable({ employees, onDelete, onGenerateQR, onDownloadQR, onEdit }) {
 
     return (
         <div className="table-container">
@@ -30,9 +30,11 @@ function EmployeeTable({ employees, onDelete, onGenerateQR, onEdit }) {
                         </td>
                         <td><span className={`badge badge-${emp.role}`}>{emp.role.toUpperCase()}</span></td>
                         <td>
-                            <button title="Generuj QR" onClick={() => onGenerateQR(emp.id_person)}>📱</button>
                             <button title="Edytuj" onClick={() => onEdit(emp)}>✏️</button>
-                            <button title="Zwolnij" className="btn-delete" onClick={() => onDelete(emp.id_person)}>❌</button>
+                            <button title="Zwolnij" className="btn-delete" onClick={() => onDelete(emp.id_person)}>❌
+                            </button>
+                            <button title="Pokaż kod QR" onClick={() => onGenerateQR(emp)}>👁️</button>
+                            <button title="Pobierz kod QR" onClick={() => onDownloadQR(emp)}>💾️</button>
                         </td>
                     </tr>
                 ))}
