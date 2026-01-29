@@ -77,6 +77,7 @@ pub struct CheckQrResponse {
 pub struct VerifyFaceResponse {
     pub access_granted: bool,
     pub reason: String,
+    pub similarity: Option<f32>,
 }
 
 #[derive(Debug, Deserialize)]

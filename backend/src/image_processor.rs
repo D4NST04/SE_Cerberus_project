@@ -14,10 +14,16 @@ fn preprocess(img: &image::RgbImage) -> Array4<f32> {
     let mut arr = Array4::<f32>::zeros((1, 3, 112, 112));
 
     for (x, y, pixel) in resized.enumerate_pixels() {
-        arr[[0, 0, y as usize, x as usize]] = (pixel[0] as f32 - 127.5) / 128.0;
-        arr[[0, 1, y as usize, x as usize]] = (pixel[1] as f32 - 127.5) / 128.0;
-        arr[[0, 2, y as usize, x as usize]] = (pixel[2] as f32 - 127.5) / 128.0;
+        arr[[0, 2, y as usize, x as usize]] = (pixel[0] as f32 - 127.5) / 128.0; // R to channel 2
+        arr[[0, 1, y as usize, x as usize]] = (pixel[1] as f32 - 127.5) / 128.0; // G to channel 1
+        arr[[0, 0, y as usize, x as usize]] = (pixel[2] as f32 - 127.5) / 128.0; // B to channel 0
     }
+
+    println!("Input Tensor Stats - Min: {}, Max: {}, Mean: {}", 
+        arr.iter().fold(f32::INFINITY, |a, &b| a.min(b)),
+        arr.iter().fold(f32::NEG_INFINITY, |a, &b| a.max(b)),
+        arr.sum() / arr.len() as f32
+    );
 
     arr
 }

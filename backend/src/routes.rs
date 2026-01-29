@@ -199,6 +199,7 @@ pub async fn verify_face(data: web::Data<AppState>, mut payload: Multipart) -> i
         return HttpResponse::Ok().json(VerifyFaceResponse {
             access_granted: true,
             reason: "mock_mode_no_model".to_string(),
+            similarity: None,
         });
     }
 
@@ -209,6 +210,7 @@ pub async fn verify_face(data: web::Data<AppState>, mut payload: Multipart) -> i
             return HttpResponse::Ok().json(VerifyFaceResponse {
                 access_granted: false,
                 reason: "employee_not_found".to_string(),
+                similarity: None,
             });
         }
         Err(_) => {
@@ -223,6 +225,7 @@ pub async fn verify_face(data: web::Data<AppState>, mut payload: Multipart) -> i
         return HttpResponse::Ok().json(VerifyFaceResponse {
             access_granted: false,
             reason: "no_face_data_registered".to_string(),
+            similarity: None,
         });
     }
 
@@ -245,19 +248,23 @@ pub async fn verify_face(data: web::Data<AppState>, mut payload: Multipart) -> i
         .collect();
 
     let similarity = cosine_similarity(&new_embedding, &stored_floats);
-    let threshold = 0.5;
+    let threshold = 0.95;
+
+    println!("Similarity: {}, Threshold: {}", similarity, threshold);
 
     if similarity > threshold {
         let _ = fs::remove_file(p_path);
         HttpResponse::Ok().json(VerifyFaceResponse {
             access_granted: true,
             reason: "face_matched".to_string(),
+            similarity: Some(similarity),
         })
     } else {
         log_failed_attempt(emp_id, "face_mismatched", &p_path);
         HttpResponse::Ok().json(VerifyFaceResponse {
             access_granted: false,
             reason: "face_mismatched".to_string(),
+            similarity: Some(similarity),
         })
     }
 }
