@@ -1,4 +1,4 @@
-// Unfortunately, comments are in Polish
+// Unfortunately, comments are in Polish...
 import React, { useState, useEffect } from 'react';
 import './App.css';
 
